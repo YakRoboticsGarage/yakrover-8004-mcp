@@ -1,0 +1,31 @@
+"""
+Template robot plugin — copy this directory to create a new robot.
+
+1. Copy _template/ to a new directory: cp -r _template/ myrobot/
+2. Rename the class and fill in metadata()
+3. Implement client.py for your robot's communication protocol
+4. Define MCP tools in tools.py
+5. Add optional dependencies to pyproject.toml if needed
+"""
+
+from core.plugin import RobotPlugin, RobotMetadata
+
+
+class TemplatePlugin(RobotPlugin):
+    def metadata(self) -> RobotMetadata:
+        return RobotMetadata(
+            name="My Robot",
+            description="Description of your robot.",
+            robot_type="differential_drive",  # e.g. quadrotor, articulated_arm
+            fleet_provider="yakrover",
+            fleet_domain="yakrover.com/dev",
+        )
+
+    def tool_names(self) -> list[str]:
+        return ["myrobot_is_online"]
+
+    def register_tools(self, mcp):
+        from .client import TemplateClient
+        from .tools import register
+
+        register(mcp, TemplateClient())
