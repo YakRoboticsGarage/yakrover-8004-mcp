@@ -115,3 +115,26 @@ Final polish and migration away from single-robot repos.
 - [ ] Update `tumbller-8004-mcp` README pointing to this repo
 - [ ] Update `tello-8004-mcp` README pointing to this repo
 - [ ] Archive old single-robot repos
+
+---
+
+## Key Findings and Lessons Learned
+
+### Dependency Resolution
+
+- **`agent0-sdk` requires a pre-release dependency** (`ipfshttpclient>=0.8.0a2`). uv won't resolve this by default — you must set `prerelease = "allow"` in `[tool.uv]` in `pyproject.toml`. The tumbller repo didn't need this because its lockfile was already resolved, but a fresh `uv sync` on a new repo will fail without it.
+
+### FastMCP v3 Breaking Changes
+
+- **`get_asgi_app()` is gone** — replaced by `http_app()` in FastMCP 3.x. The return type is `StarletteWithLifespan` (a Starlette app), which FastAPI can mount.
+- **Lifespan management is mandatory** — FastMCP v3's `StreamableHTTPSessionManager` requires its task group to be initialized via the app's lifespan. When sub-mounting under FastAPI, you must compose all MCP app lifespans into the parent's lifespan, otherwise every request returns `500 Internal Server Error` with `RuntimeError: Task group is not initialized`.
+- **Solution**: recursive `_compose_lifespans()` context manager that enters each MCP app's lifespan before yielding, passed to `FastAPI(lifespan=...)`.
+- **Auth API unchanged** — `FastMCP(auth=...)` constructor param and `StaticTokenVerifier` still work the same in v3.
+
+### Simulator Design
+
+- **HTML responses matter** — the real Tumbller ESP32 firmware returns `text/html` for `/motor/*` endpoints (e.g. `<h1>Motor: forward</h1>`), not JSON. The simulator must use `HTMLResponse` to match this behavior, since `FakeRoverClient.get()` falls back to `{"status": "ok", "body": resp.text}` when `resp.json()` fails. Returning a plain string from FastAPI would auto-serialize to JSON instead.
+
+### PYTHONPATH
+
+- Scripts need `PYTHONPATH=src` or `sys.path.insert(0, "src")` because the package layout uses `src/core/` and `src/robots/` without a top-level installable package. `scripts/serve.py` handles this automatically with `sys.path.insert`, but running modules directly (e.g. `python -m robots.fakerover.simulator`) requires `PYTHONPATH=src`.
