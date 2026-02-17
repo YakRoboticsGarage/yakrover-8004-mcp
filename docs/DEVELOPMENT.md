@@ -37,12 +37,12 @@ Build the fake rover HTTP server first — it gives us something to test against
 
 Wire up the FastAPI gateway with ASGI sub-mounts so each robot gets its own isolated MCP server at `/{name}/mcp`.
 
-- [ ] Create `src/core/server.py` — `create_robot_server()`, `create_fleet_server()`, `create_gateway()`
-- [ ] Create `scripts/serve.py` — CLI entry point with `--robots` filter and `--port`
-- [ ] Verify: `uv run python scripts/serve.py --robots fakerover` starts gateway
-- [ ] Verify: `GET /` returns gateway info with mounted robots
-- [ ] Verify: `/fakerover/mcp` responds as a working MCP endpoint
-- [ ] Connect Claude Desktop / MCP client to `/fakerover/mcp`, call `fakerover_move("forward")` end-to-end
+- [x] Create `src/core/server.py` — `create_robot_server()`, `create_gateway()` with composed lifespans for FastMCP v3
+- [x] Create `scripts/serve.py` — CLI entry point with `--robots` filter and `--port`
+- [x] Verify: `uv run python scripts/serve.py --robots fakerover` starts gateway
+- [x] Verify: `GET /` returns gateway info with mounted robots
+- [x] Verify: `/fakerover/mcp` responds as a working MCP endpoint
+- [x] Full MCP session verified: init, list tools, call `fakerover_move("forward")`, `fakerover_is_online`, `fakerover_get_temperature_humidity`
 
 ---
 
