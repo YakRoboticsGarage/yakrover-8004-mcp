@@ -34,6 +34,12 @@ def _mcp_url(url_prefix: str) -> str:
     return f"https://{ngrok_domain}/{url_prefix}/mcp"
 
 
+def _fleet_url() -> str:
+    """Build the public fleet MCP endpoint URL."""
+    ngrok_domain = os.environ["NGROK_DOMAIN"]
+    return f"https://{ngrok_domain}/fleet/mcp"
+
+
 def register_robot(plugin: RobotPlugin) -> None:
     """Register a robot plugin on ERC-8004 (Ethereum Sepolia).
 
@@ -58,6 +64,7 @@ def register_robot(plugin: RobotPlugin) -> None:
 
     mcp_ep = next(ep for ep in agent.registration_file.endpoints if ep.type == EndpointType.MCP)
     mcp_ep.meta["mcpTools"] = plugin.tool_names()
+    mcp_ep.meta["fleetEndpoint"] = _fleet_url()
 
     agent.setTrust(reputation=True)
     agent.setActive(True)
@@ -70,8 +77,10 @@ def register_robot(plugin: RobotPlugin) -> None:
         "fleet_domain": meta.fleet_domain,
     })
 
+    fleet_endpoint = _fleet_url()
     print(f"Registering '{meta.name}' on Ethereum Sepolia...")
-    print(f"  MCP endpoint: {mcp_endpoint}")
+    print(f"  MCP endpoint:   {mcp_endpoint}")
+    print(f"  Fleet endpoint: {fleet_endpoint}")
     print(f"  Tools: {plugin.tool_names()}")
     print(f"  robot_type={meta.robot_type}, fleet_provider={meta.fleet_provider}, fleet_domain={meta.fleet_domain}")
     print()
@@ -113,6 +122,7 @@ def update_robot(plugin: RobotPlugin, agent_id: str) -> None:
 
     mcp_ep = next(ep for ep in agent.registration_file.endpoints if ep.type == EndpointType.MCP)
     mcp_ep.meta["mcpTools"] = plugin.tool_names()
+    mcp_ep.meta["fleetEndpoint"] = _fleet_url()
 
     agent.setMetadata({
         "category": "robot",
@@ -121,7 +131,8 @@ def update_robot(plugin: RobotPlugin, agent_id: str) -> None:
         "fleet_domain": meta.fleet_domain,
     })
 
-    print(f"\n  Updated MCP endpoint: {mcp_endpoint}")
+    print(f"\n  Updated MCP endpoint:   {mcp_endpoint}")
+    print(f"  Updated fleet endpoint: {_fleet_url()}")
     print(f"  Updated tools: {plugin.tool_names()}")
     print(f"  robot_type={meta.robot_type}, fleet_provider={meta.fleet_provider}, fleet_domain={meta.fleet_domain}")
 

@@ -30,22 +30,29 @@ def _get_sdk() -> SDK:
     )
 
 
-def _fetch_ipfs_tools(sdk: SDK, agent_id_int: int) -> list:
-    """Fetch MCP tools from IPFS metadata (bypasses subgraph lag)."""
+def _fetch_ipfs_mcp_meta(sdk: SDK, agent_id_int: int) -> dict:
+    """Fetch MCP service metadata from IPFS (bypasses subgraph lag).
+
+    Returns a dict with ``mcpTools`` and ``fleetEndpoint`` keys (either
+    may be absent if not stored).
+    """
     try:
         uri = sdk.identity_registry.functions.tokenURI(agent_id_int).call()
         if not uri or not uri.startswith("ipfs://"):
-            return []
+            return {}
         cid = uri.replace("ipfs://", "")
         resp = requests.get(f"{IPFS_GATEWAY}{cid}", timeout=10)
         resp.raise_for_status()
         data = resp.json()
         for svc in data.get("services", []):
             if svc.get("name") == "MCP":
-                return svc.get("mcpTools", [])
+                return {
+                    "mcpTools": svc.get("mcpTools", []),
+                    "fleetEndpoint": svc.get("fleetEndpoint"),
+                }
     except Exception:
         pass
-    return []
+    return {}
 
 
 def discover_robots(
@@ -90,8 +97,11 @@ def discover_robots(
 
         name = agent.get("name") if isinstance(agent, dict) else agent.name
         tools = agent.get("mcpTools", []) if isinstance(agent, dict) else getattr(agent, "mcpTools", [])
+        fleet_endpoint = None
         if not tools:
-            tools = _fetch_ipfs_tools(sdk, agent_id_int)
+            ipfs_meta = _fetch_ipfs_mcp_meta(sdk, agent_id_int)
+            tools = ipfs_meta.get("mcpTools", [])
+            fleet_endpoint = ipfs_meta.get("fleetEndpoint")
 
         robots.append({
             "agent_id": agent_id_str,
@@ -100,6 +110,7 @@ def discover_robots(
             "fleet_provider": provider_str,
             "fleet_domain": fleet_str,
             "mcp_tools": tools,
+            "fleet_endpoint": fleet_endpoint,
         })
 
     return robots
@@ -145,6 +156,8 @@ def register_discovery_tools(
             - fleet_provider: Organization operating the robot
             - fleet_domain: Regional fleet grouping
             - mcp_tools: List of MCP tool names the robot exposes
+            - fleet_endpoint: Public URL of the fleet MCP server (from IPFS
+                              metadata), or null if not stored
             - local_endpoint: MCP endpoint path on this gateway
                               (e.g. "/tumbller/mcp"), or null if not local
         """

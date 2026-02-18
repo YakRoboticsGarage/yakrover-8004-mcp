@@ -99,6 +99,70 @@ claude mcp add --transport http fakerover http://localhost:8000/fakerover/mcp
 
 Then ask Claude to move the fake rover or read its temperature.
 
+## Discovery Flow
+
+Robots are registered on the Ethereum Sepolia blockchain via [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004). This makes them discoverable by anyone, anywhere — no central directory needed.
+
+### Example: Discovering a Tumbller in Finland from the US
+
+**1. Setup (Finland, one-time)**
+
+Start the gateway with an ngrok tunnel and register the robot on-chain:
+
+```bash
+# Start the gateway
+uv run python scripts/serve.py --robots tumbller --ngrok
+
+# Register on Ethereum Sepolia — stores the MCP endpoint, tool list,
+# fleet endpoint, and robot metadata on-chain + IPFS
+uv run python scripts/register.py tumbller
+```
+
+This writes to the blockchain:
+- MCP endpoint → `https://your-domain.ngrok.app/tumbller/mcp`
+- Fleet endpoint → `https://your-domain.ngrok.app/fleet/mcp`
+- Tools → `["tumbller_move", "tumbller_is_online", "tumbller_get_temperature_humidity"]`
+- On-chain metadata → `category=robot`, `robot_type=differential_drive`, `fleet_provider=yakrover`
+
+**2. Discovery (US)**
+
+Anyone can query the blockchain to find robots:
+
+```bash
+# CLI discovery
+uv run python scripts/discover.py
+uv run python scripts/discover.py --provider yakrover
+```
+
+Or an LLM connected to any fleet endpoint can discover robots at runtime:
+
+```
+User: "Find me all available robots"
+LLM:  calls discover_robot_agents() on /fleet/mcp
+  → queries Ethereum Sepolia
+  → returns: Tumbller in Finland, with MCP URL and tool list
+```
+
+**3. Control (US → Finland)**
+
+The LLM connects to the discovered MCP endpoint and controls the robot:
+
+```
+LLM:  connects to https://your-domain.ngrok.app/tumbller/mcp
+LLM:  calls tumbller_is_online() → {"online": true}
+LLM:  calls tumbller_move("forward") → robot moves in Finland
+```
+
+**The full chain:**
+
+```
+LLM (US) → Sepolia blockchain → IPFS agent card
+                                   ↓
+                              MCP endpoint URL + fleet endpoint URL
+                                   ↓
+                              ngrok tunnel → FastAPI gateway (Finland) → ESP32 robot
+```
+
 ## Adding a Robot
 
 Each robot is a plugin — a package under `src/robots/` with three files:

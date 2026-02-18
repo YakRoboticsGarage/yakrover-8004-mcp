@@ -39,6 +39,7 @@ for robot in robots:
     print(f"    Robot type:     {robot['robot_type']}")
     print(f"    Fleet provider: {robot['fleet_provider'] or '(none)'}")
     print(f"    Fleet domain:   {robot['fleet_domain'] or '(none)'}")
+    print(f"    Fleet endpoint: {robot.get('fleet_endpoint') or '(none)'}")
     print(f"    MCP tools:      {robot['mcp_tools'] or '(none)'}")
     print()
 
