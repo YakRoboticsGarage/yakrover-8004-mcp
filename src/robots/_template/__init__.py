@@ -17,6 +17,7 @@ class TemplatePlugin(RobotPlugin):
             name="My Robot",
             description="Description of your robot.",
             robot_type="differential_drive",  # e.g. quadrotor, articulated_arm
+            url_prefix="myrobot",              # URL path: /myrobot/mcp
             fleet_provider="yakrover",
             fleet_domain="yakrover.com/dev",
         )

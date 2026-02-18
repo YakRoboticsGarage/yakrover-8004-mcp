@@ -7,6 +7,7 @@ class TumbllerPlugin(RobotPlugin):
             name="Tumbller Self-Balancing Robot",
             description="A physical ESP32-S3 two-wheeled robot controllable via MCP.",
             robot_type="differential_drive",
+            url_prefix="tumbller",
             fleet_provider="yakrover",
             fleet_domain="yakrover.com/finland",
         )

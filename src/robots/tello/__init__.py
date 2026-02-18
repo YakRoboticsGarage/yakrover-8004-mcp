@@ -7,6 +7,7 @@ class TelloPlugin(RobotPlugin):
             name="DJI Tello Drone",
             description="A DJI Tello quadrotor drone controllable via MCP.",
             robot_type="quadrotor",
+            url_prefix="tello",
             fleet_provider="yakrover",
             fleet_domain="yakrover.com/finland",
         )

@@ -10,6 +10,7 @@ class RobotMetadata:
     name: str
     description: str
     robot_type: str
+    url_prefix: str = ""        # URL path segment (e.g. "tumbller" → /tumbller/mcp)
     fleet_provider: str = ""
     fleet_domain: str = ""
     image: str = ""

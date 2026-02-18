@@ -86,10 +86,13 @@ Port the Tello drone from `tello-8004-mcp`. Client code is unchanged.
 
 Generic registration scripts driven by plugin metadata, replacing per-robot registration scripts.
 
-- [ ] Create `src/core/registration.py` — `register_robot(plugin)` generic function
-- [ ] Create `src/core/wallet.py` — wallet generation (port from existing)
-- [ ] Create `scripts/register.py` — CLI: `uv run python scripts/register.py tumbller`
-- [ ] Create `scripts/generate_wallet.py` — CLI wallet generation
+- [x] Create `src/core/registration.py` — `register_robot()`, `update_robot()`, `fix_metadata()` generic functions
+- [x] Create `src/core/wallet.py` — wallet generation (port from existing)
+- [x] Add `url_prefix` field to `RobotMetadata` — explicit URL path segment for MCP endpoint
+- [x] Create `scripts/register.py` — CLI: `uv run python scripts/register.py tumbller`
+- [x] Create `scripts/generate_wallet.py` — CLI wallet generation
+- [x] Create `scripts/update_agent.py` — CLI: `uv run python scripts/update_agent.py tumbller 11155111:989`
+- [x] Create `scripts/fix_metadata.py` — CLI: `uv run python scripts/fix_metadata.py tumbller 989`
 - [ ] Verify: register fakerover on-chain (Sepolia testnet)
 - [ ] Verify: register tumbller on-chain, confirm agent ID + metadata match
 

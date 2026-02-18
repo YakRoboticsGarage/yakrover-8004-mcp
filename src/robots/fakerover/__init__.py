@@ -7,6 +7,7 @@ class FakeRoverPlugin(RobotPlugin):
             name="Fake Rover",
             description="A simulated differential-drive rover for development and testing.",
             robot_type="differential_drive",
+            url_prefix="fakerover",
             fleet_provider="yakrover",
             fleet_domain="yakrover.com/dev",
         )
