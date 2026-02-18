@@ -86,6 +86,7 @@ Required in `.env`:
 - `RPC_URL` — Ethereum Sepolia RPC endpoint
 - `SIGNER_PVT_KEY` — Wallet private key for on-chain transactions
 - `PINATA_JWT` — Pinata API token for IPFS uploads
+- `NGROK_AUTHTOKEN` — ngrok auth token (required for `--ngrok`)
 - `NGROK_DOMAIN` — ngrok static domain
 - `MCP_BEARER_TOKEN` — (optional) Bearer token for MCP auth
 - `FAKEROVER_URL` — (optional) Fake rover simulator address (default: `http://localhost:8080`)

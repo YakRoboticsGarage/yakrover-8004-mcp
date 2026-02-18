@@ -50,9 +50,9 @@ Wire up the FastAPI gateway with ASGI sub-mounts so each robot gets its own isol
 
 Add ngrok tunnel support and optional bearer token auth.
 
-- [ ] Create `src/core/tunnel.py` — ngrok tunnel helper (port from `tumbller-8004-mcp`)
-- [ ] Add `--ngrok` flag to `scripts/serve.py`
-- [ ] Add `MCP_BEARER_TOKEN` auth support in `create_robot_server()` and `create_fleet_server()`
+- [x] Create `src/core/tunnel.py` — ngrok tunnel helper (ported from `tumbller-8004-mcp`)
+- [x] Add `--ngrok` flag to `scripts/serve.py`
+- [x] Add `MCP_BEARER_TOKEN` auth support in `create_robot_server()` (already done in Stage 3)
 - [ ] Verify: `uv run python scripts/serve.py --robots fakerover --ngrok` creates tunnel, MCP works over public URL
 
 ---

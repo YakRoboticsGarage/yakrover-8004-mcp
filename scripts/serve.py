@@ -3,13 +3,16 @@ Start the MCP gateway for one or more robot plugins.
 
 Usage:
     # Serve all discovered robot plugins
-    PYTHONPATH=src uv run python scripts/serve.py
+    uv run python scripts/serve.py
 
     # Serve only specific robots
-    PYTHONPATH=src uv run python scripts/serve.py --robots fakerover
+    uv run python scripts/serve.py --robots fakerover
+
+    # With ngrok tunnel (requires NGROK_AUTHTOKEN + NGROK_DOMAIN in .env)
+    uv run python scripts/serve.py --robots fakerover --ngrok
 
     # Custom port
-    PYTHONPATH=src uv run python scripts/serve.py --robots fakerover --port 8001
+    uv run python scripts/serve.py --robots fakerover --port 8001
 
 Endpoints created:
     /{robot}/mcp   — Per-robot MCP server
@@ -31,6 +34,7 @@ from core.server import create_gateway
 parser = argparse.ArgumentParser(description="Start the robot fleet MCP gateway")
 parser.add_argument("--robots", nargs="*", help="Robot plugins to load (default: all)")
 parser.add_argument("--port", type=int, default=8000)
+parser.add_argument("--ngrok", action="store_true", help="Open an ngrok tunnel to the gateway")
 args = parser.parse_args()
 
 # Discover and filter plugins
@@ -56,6 +60,14 @@ for name, plugin in plugins.items():
     print(f"  /{name}/mcp — {meta.name} ({len(plugin.tool_names())} tools)")
 
 app = create_gateway(plugins)
+
+if args.ngrok:
+    from core.tunnel import start_tunnel
+
+    public_url = start_tunnel(args.port)
+    print(f"\nngrok tunnel: {public_url}")
+    for name in plugins:
+        print(f"  {public_url}/{name}/mcp")
 
 try:
     uvicorn.run(app, host="0.0.0.0", port=args.port)
