@@ -89,6 +89,8 @@ Required in `.env`:
 - `NGROK_AUTHTOKEN` — ngrok auth token (required for `--ngrok`)
 - `NGROK_DOMAIN` — ngrok static domain
 - `MCP_BEARER_TOKEN` — (optional) Bearer token for MCP auth
+- `TUMBLLER_URL` — (optional) Tumbller robot address (default: `http://finland-tumbller-01.local`)
+- `TELLO_HOST` — (optional) Tello drone IP (default: `192.168.10.1`)
 - `FAKEROVER_URL` — (optional) Fake rover simulator address (default: `http://localhost:8080`)
 
 ## Development Guidelines

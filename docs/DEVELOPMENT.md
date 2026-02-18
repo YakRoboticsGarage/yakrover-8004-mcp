@@ -61,10 +61,10 @@ Add ngrok tunnel support and optional bearer token auth.
 
 Port the real Tumbller robot from `tumbller-8004-mcp`. Client code is unchanged.
 
-- [ ] Create `src/robots/tumbller/__init__.py` — `TumbllerPlugin`
-- [ ] Copy `tumbller_client.py` → `src/robots/tumbller/client.py`
-- [ ] Create `src/robots/tumbller/tools.py` — extract tool defs from old `server.py`
-- [ ] Add `tumbller` optional dependency group in `pyproject.toml`
+- [x] Create `src/robots/tumbller/__init__.py` — `TumbllerPlugin`
+- [x] Copy `tumbller_client.py` → `src/robots/tumbller/client.py`
+- [x] Create `src/robots/tumbller/tools.py` — extract tool defs from old `server.py`
+- [x] Add `tumbller` optional dependency group in `pyproject.toml` (already present)
 - [ ] Verify: `uv run python scripts/serve.py --robots tumbller --ngrok` — MCP tools work against real robot
 - [ ] Verify: `uv run python scripts/serve.py --robots fakerover tumbller` — both mounted simultaneously
 
@@ -74,10 +74,10 @@ Port the real Tumbller robot from `tumbller-8004-mcp`. Client code is unchanged.
 
 Port the Tello drone from `tello-8004-mcp`. Client code is unchanged.
 
-- [ ] Create `src/robots/tello/__init__.py` — `TelloPlugin`
-- [ ] Copy `tello_client.py` → `src/robots/tello/client.py`
-- [ ] Create `src/robots/tello/tools.py` — extract tool defs from old `server.py`
-- [ ] Add `tello` optional dependency group in `pyproject.toml`
+- [x] Create `src/robots/tello/__init__.py` — `TelloPlugin`
+- [x] Copy `tello_client.py` → `src/robots/tello/client.py`
+- [x] Create `src/robots/tello/tools.py` — extract tool defs from old `server.py`
+- [x] Add `tello` optional dependency group in `pyproject.toml` (already present)
 - [ ] Verify: `uv run python scripts/serve.py --robots tello` — MCP tools work against real drone
 
 ---
