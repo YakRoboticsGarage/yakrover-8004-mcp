@@ -7,23 +7,53 @@ A plugin-based architecture that consolidates shared infrastructure so any robot
 ## Architecture
 
 ```
-LLM / AI Client (Claude, GPT, etc.)
-        |
-        | MCP (streamable-http)
-        v
-  FastAPI Gateway (single port)
-   /fleet/mcp      — Fleet orchestrator (discovery + lifecycle)
-   /fakerover/mcp  — Fake Rover MCP server (dev/testing)
-   /tumbller/mcp   — Tumbller MCP server
-   /tello/mcp      — Tello MCP server
-        |
-        | ngrok tunnel (single URL)
-        v
-  Public URL (*.ngrok-free.dev)
-        |
-        | registered on-chain
-        v
-  ERC-8004 Identity Registry (Sepolia)
+┌─────────────────────────────────────────────────────────────────┐
+│                        LLM / AI Agent                           │
+│  (Claude, GPT, etc. connected via MCP)                          │
+└───────┬───────────────────┬───────────────────┬─────────────────┘
+        │                   │                   │
+        │ /fleet/mcp        │ /tumbller/mcp     │ /tello/mcp
+        │                   │                   │
+┌───────▼───────────────────▼───────────────────▼─────────────────┐
+│                                                                  │
+│              ngrok tunnel (single URL, single port)              │
+│              https://your-domain.ngrok.app                       │
+│                                                                  │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│              FastAPI Gateway (ASGI sub-mounts)                   │
+│              port 8000                                           │
+│                                                                  │
+│  ┌─────────────────┐  ┌──────────────────┐  ┌───────────────┐  │
+│  │ /fleet/mcp       │  │ /tumbller/mcp    │  │ /tello/mcp    │  │
+│  │ Fleet MCP Server │  │ Tumbller MCP     │  │ Tello MCP     │  │
+│  │                  │  │ Server           │  │ Server        │  │
+│  │ discover_robot   │  │                  │  │               │  │
+│  │ _agents()        │  │ tumbller_move    │  │ tello_takeoff │  │
+│  │                  │  │ tumbller_is      │  │ tello_land    │  │
+│  │ Queries ERC-8004 │  │ _online()        │  │ tello_move    │  │
+│  │ on Sepolia       │  │ tumbller_get     │  │ tello_rotate  │  │
+│  │                  │  │ _temperature     │  │ tello_flip    │  │
+│  │                  │  │ _humidity()      │  │ tello_get     │  │
+│  │                  │  │                  │  │ _status()     │  │
+│  └─────────────────┘  └───────┬──────────┘  └──────┬────────┘  │
+│                               │                     │            │
+│        Each robot is an       │                     │            │
+│        isolated FastMCP       │                     │            │
+│        instance               │                     │            │
+└───────────────────────────────┼─────────────────────┼────────────┘
+                                │                     │
+                    ┌───────────▼──────┐   ┌──────────▼──────────┐
+                    │ TumbllerClient   │   │   TelloClient       │
+                    │ (HTTP/httpx)     │   │   (UDP/djitellopy)  │
+                    └───────┬──────────┘   └──────────┬──────────┘
+                            │                         │
+                   HTTP :80 │                UDP :8889 │
+                            ▼                         ▼
+                    ┌───────────────┐       ┌──────────────────┐
+                    │ ESP32-S3      │       │ DJI Tello        │
+                    │ Tumbller      │       │ Drone            │
+                    └───────────────┘       └──────────────────┘
 ```
 
 ## Prerequisites
