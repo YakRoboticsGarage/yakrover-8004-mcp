@@ -102,9 +102,9 @@ Generic registration scripts driven by plugin metadata, replacing per-robot regi
 
 Turn `discover_robot_agent.py` into an MCP tool on the fleet server so LLMs can discover robots at runtime.
 
-- [ ] Create `src/core/discovery.py` — `discover_robots()` query function + `register_discovery_tools(mcp)`
-- [ ] Wire `create_fleet_server()` to mount discovery tools at `/fleet/mcp`
-- [ ] Create `scripts/discover.py` — CLI wrapper for discovery
+- [x] Create `src/core/discovery.py` — `discover_robots()` query function + `register_discovery_tools(mcp)`
+- [x] Wire `create_fleet_server()` to mount discovery tools at `/fleet/mcp`
+- [x] Create `scripts/discover.py` — CLI wrapper for discovery
 - [ ] Verify: connect Claude to `/fleet/mcp`, call `discover_robot_agents()`
 - [ ] Verify: discovery response includes `local_endpoint` for locally mounted robots
 

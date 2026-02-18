@@ -15,6 +15,7 @@ Usage:
     uv run python scripts/serve.py --robots fakerover --port 8001
 
 Endpoints created:
+    /fleet/mcp     — Fleet orchestrator (discovery tools)
     /{robot}/mcp   — Per-robot MCP server
     /              — Gateway info (lists all mounted robots)
 """
@@ -58,6 +59,7 @@ print(f"Loading {len(plugins)} robot(s): {', '.join(plugins.keys())}")
 for name, plugin in plugins.items():
     meta = plugin.metadata()
     print(f"  /{name}/mcp — {meta.name} ({len(plugin.tool_names())} tools)")
+print(f"  /fleet/mcp  — Fleet orchestrator (discovery)")
 
 app = create_gateway(plugins)
 
@@ -66,6 +68,7 @@ if args.ngrok:
 
     public_url = start_tunnel(args.port)
     print(f"\nngrok tunnel: {public_url}")
+    print(f"  {public_url}/fleet/mcp")
     for name in plugins:
         print(f"  {public_url}/{name}/mcp")
 

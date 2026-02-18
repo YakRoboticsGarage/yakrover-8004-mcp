@@ -36,10 +36,33 @@ def create_robot_server(plugin: RobotPlugin) -> FastMCP:
     return mcp
 
 
+def create_fleet_server(mounted_robots: dict[str, str] | None = None) -> FastMCP:
+    """Create the fleet orchestrator MCP server (discovery + lifecycle).
+
+    Args:
+        mounted_robots: Map of plugin name → endpoint path, passed to
+                        discovery tools so results include local URLs.
+    """
+    auth = _make_auth()
+
+    mcp = FastMCP(
+        name="Robot Fleet Orchestrator",
+        instructions="Discover robots on-chain and manage the fleet.",
+        auth=auth,
+    )
+
+    from core.discovery import register_discovery_tools
+
+    register_discovery_tools(mcp, mounted_robots=mounted_robots)
+
+    return mcp
+
+
 def create_gateway(plugins: dict[str, RobotPlugin]) -> FastAPI:
     """Create a FastAPI gateway that sub-mounts each robot's MCP server.
 
     Each robot gets its own isolated FastMCP instance mounted at /{name}/.
+    The fleet orchestrator is mounted at /fleet/.
     All served on a single port behind one ngrok tunnel.
 
     FastMCP v3 requires each MCP app's lifespan to be started for its
@@ -47,9 +70,15 @@ def create_gateway(plugins: dict[str, RobotPlugin]) -> FastAPI:
     into the gateway's lifespan.
     """
     mcp_apps = {}
+    mounted_robots: dict[str, str] = {}
     for name, plugin in plugins.items():
         mcp = create_robot_server(plugin)
         mcp_apps[name] = mcp.http_app()
+        mounted_robots[name] = f"/{name}/mcp"
+
+    # Fleet orchestrator (discovery tools)
+    fleet_mcp = create_fleet_server(mounted_robots=mounted_robots)
+    mcp_apps["fleet"] = fleet_mcp.http_app()
 
     @asynccontextmanager
     async def lifespan(app):
@@ -73,6 +102,7 @@ def create_gateway(plugins: dict[str, RobotPlugin]) -> FastAPI:
                 }
                 for name, plugin in plugins.items()
             },
+            "fleet_endpoint": "/fleet/mcp",
         }
 
     return app
