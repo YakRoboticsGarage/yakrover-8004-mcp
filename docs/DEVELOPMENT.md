@@ -105,12 +105,30 @@ Turn `discover_robot_agent.py` into an MCP tool on the fleet server so LLMs can 
 - [x] Create `src/core/discovery.py` — `discover_robots()` query function + `register_discovery_tools(mcp)`
 - [x] Wire `create_fleet_server()` to mount discovery tools at `/fleet/mcp`
 - [x] Create `scripts/discover.py` — CLI wrapper for discovery
-- [ ] Verify: connect Claude to `/fleet/mcp`, call `discover_robot_agents()`
-- [ ] Verify: discovery response includes `local_endpoint` for locally mounted robots
+- [x] Store `fleetEndpoint` in IPFS agent card during registration so discovery can surface it
+- [x] Fix discovery to always fetch IPFS metadata (not just when subgraph lacks tools) so `fleet_endpoint` is always populated
+- [x] Add `mcp_endpoint` to discovery results — read from IPFS agent card `endpoint` field
+- [x] Verify: connect Claude to `/fleet/mcp`, call `discover_robot_agents()`
+- [x] Verify: discovery response includes `mcp_endpoint` and `fleet_endpoint` from IPFS
 
 ---
 
-## Stage 9: Cleanup + Deprecation
+## Stage 9: Discovery CLI — MCP Config Writer
+
+Add `--add-mcp` flag to `scripts/discover.py` so discovered robots can be auto-added to Claude's MCP config.
+
+- [x] Add `--add-mcp` flag — writes discovered endpoints as MCP servers to Claude config
+- [x] Add `--scope` flag — `project` (`.mcp.json`) or `global` (`~/.claude.json`), default `project`
+- [x] Load `MCP_BEARER_TOKEN` from `.env` for auth headers
+- [x] Derive server names from fleet domain + robot name (e.g. `finland-tumbller`, `finland-fleet`)
+- [x] Deduplicate fleet endpoints across robots sharing the same fleet
+- [x] Update README with `--add-mcp` usage and scope table
+- [x] Verify: `uv run python scripts/discover.py --add-mcp` writes correct `.mcp.json`
+- [x] Verify: `uv run python scripts/discover.py --add-mcp --scope global` writes correct `~/.claude.json`
+
+---
+
+## Stage 10: Cleanup + Deprecation
 
 Final polish and migration away from single-robot repos.
 
@@ -137,6 +155,12 @@ Final polish and migration away from single-robot repos.
 ### Simulator Design
 
 - **HTML responses matter** — the real Tumbller ESP32 firmware returns `text/html` for `/motor/*` endpoints (e.g. `<h1>Motor: forward</h1>`), not JSON. The simulator must use `HTMLResponse` to match this behavior, since `FakeRoverClient.get()` falls back to `{"status": "ok", "body": resp.text}` when `resp.json()` fails. Returning a plain string from FastAPI would auto-serialize to JSON instead.
+
+### IPFS Agent Card and Discovery
+
+- **Always fetch IPFS metadata** — the agent0-sdk subgraph may already index `mcp_tools`, but `fleet_endpoint` and `mcp_endpoint` are only stored in the IPFS agent card. Discovery must always fetch IPFS metadata regardless of whether the subgraph has tools, otherwise fleet/MCP URLs come back null.
+- **IPFS field naming mismatch** — the IPFS agent card stores the MCP service URL as `endpoint` (not `mcp_endpoint`). Discovery must map `card["endpoint"]` → `mcp_endpoint` in the output dict.
+- **Store fleet endpoint at registration time** — `fleetEndpoint` must be written into the IPFS agent card during `register.py`, not just assumed from the ngrok domain. This ensures anyone discovering the robot gets the fleet URL without needing to derive it.
 
 ### PYTHONPATH
 

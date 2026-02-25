@@ -132,7 +132,20 @@ Anyone can query the blockchain to find robots:
 # CLI discovery
 uv run python scripts/discover.py
 uv run python scripts/discover.py --provider yakrover
+
+# Discover and add MCP servers to Claude config (project scope)
+uv run python scripts/discover.py --add-mcp
+
+# Discover and add MCP servers to global Claude config
+uv run python scripts/discover.py --add-mcp --scope global
 ```
+
+The `--add-mcp` flag writes the discovered robot endpoints (and fleet endpoint) into the Claude MCP config as HTTP servers. It reads `MCP_BEARER_TOKEN` from `.env` and sets it as the `Authorization` header. Server names are derived automatically (e.g. `finland-tumbller`, `finland-fleet`).
+
+| Flag | Config file | Scope |
+|------|------------|-------|
+| `--add-mcp` | `.mcp.json` (repo root) | Project |
+| `--add-mcp --scope global` | `~/.claude.json` | Global |
 
 Or an LLM connected to any fleet endpoint can discover robots at runtime:
 
@@ -205,7 +218,7 @@ src/
 scripts/
   serve.py                 # Start MCP server for one or more robots
   register.py              # Register a robot on-chain
-  discover.py              # CLI robot discovery
+  discover.py              # CLI robot discovery + MCP config writer
   generate_wallet.py       # Ethereum wallet generator
 docs/
   MODULAR_FRAMEWORK_PLAN.md  # Full design document
