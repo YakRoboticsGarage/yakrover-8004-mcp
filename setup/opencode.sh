@@ -20,7 +20,7 @@ else
   if [[ "null" = "$(jq '.mcp.yrg_fleet' $OPENCODE_CONF)" ]]
   then
     cp $OPENCODE_CONF $OPENCODE_CONF.original
-    jq ".mcp.yrg_fleet = {type: \"remote\", url: \"https://mikel-pluckless-correctively.ngrok-free.dev/fleet/mcp\", enabled: \"true\", headers: {Authorization: \"$TOKEN\"}}" $OPENCODE_CONF.original > $OPENCODE_CONF
+    jq ".mcp.yrg_fleet = {type: \"remote\", url: \"https://mikel-pluckless-correctively.ngrok-free.dev/fleet/mcp\", enabled: true, headers: {Authorization: \"$TOKEN\"}}" $OPENCODE_CONF.original > $OPENCODE_CONF
   else
     echo "Already set in $OPENCODE_CONF. If you have problem, please check the content of the file"
   fi
