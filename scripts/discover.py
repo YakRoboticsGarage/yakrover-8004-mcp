@@ -90,11 +90,11 @@ def _write_json(config_path: Path, config: dict) -> None:
         f.write("\n")
 
 
-def _add_mcp_servers(robots: list, scope: str) -> None:
+def _add_mcp_servers(robots: list, scope: str, token: str = "") -> None:
     repo_root = Path(__file__).parent.parent
-    bearer_token = _load_bearer_token()
+    bearer_token = token or _load_bearer_token()
     if not bearer_token:
-        print("  Note: No MCP_BEARER_TOKEN found in .env — servers will be added without auth headers.")
+        print("  Note: No bearer token provided — servers will be added without auth headers.")
 
     # --- Claude config ---
     if scope == "project":
@@ -154,6 +154,8 @@ parser.add_argument("--provider", dest="fleet_provider", help="Filter by fleet p
 parser.add_argument("--add-mcp", action="store_true", help="Add discovered robots as MCP servers in Claude and OpenCode configs")
 parser.add_argument("--scope", choices=["project", "global"], default="project",
                     help="MCP config scope: 'project' (.mcp.json + opencode.jsonc) or 'global' (~/.claude.json + ~/.config/opencode/opencode.json) (default: project)")
+parser.add_argument("--token", default="",
+                    help="MCP bearer token to use for auth headers (overrides MCP_BEARER_TOKEN in .env)")
 args = parser.parse_args()
 
 print("Querying ERC-8004 registry on Ethereum Sepolia...\n")
@@ -182,4 +184,4 @@ print("---\nJSON output:")
 print(json.dumps(robots, indent=2))
 
 if args.add_mcp:
-    _add_mcp_servers(robots, args.scope)
+    _add_mcp_servers(robots, args.scope, token=args.token)

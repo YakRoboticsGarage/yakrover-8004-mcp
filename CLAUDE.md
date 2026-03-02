@@ -1,5 +1,35 @@
 # CLAUDE.md — yakrover-8004-mcp
 
+## First-Time Setup — Connecting to the Robot Fleet
+
+When a user says they want to connect to the robot, control the Tumbller, or set up robot access — follow this flow exactly:
+
+**Step 1 — Discover robots on-chain (no .env needed):**
+```bash
+uv run python scripts/discover.py --provider yakrover
+```
+Parse the JSON block at the end of the output. Extract `mcp_endpoint` and `fleet_endpoint` for each robot. Show the user what was found (robot names and endpoints).
+
+**Step 2 — Ask the user for the bearer token:**
+Say: *"What is the MCP bearer token for this server?"*
+Wait for their response. Do not proceed without it.
+
+**Step 3 — Write the MCP config:**
+```bash
+uv run python scripts/discover.py --add-mcp --provider yakrover --token <TOKEN_FROM_USER>
+```
+This writes `.mcp.json` (and `opencode.jsonc`) in the repo root with the correct auth headers.
+
+**Step 4 — Tell the user to restart:**
+Say: *"Done. Exit this session and run `claude -c` to continue — the robot MCP tools will be available automatically."*
+
+**Notes:**
+- Discovery is read-only. It uses a public Sepolia RPC and requires no `.env` file.
+- If the discovery command fails (network/blockchain issue), tell the user and suggest they retry or check their internet connection.
+- If no robots are found, tell the user the robot may not be registered on-chain yet.
+
+---
+
 ## Project Overview
 
 Modular MCP framework for multi-robot fleet control and on-chain discovery via ERC-8004. Consolidates shared infrastructure from `tumbller-8004-mcp` and `tello-8004-mcp` into a single plugin-based architecture.
