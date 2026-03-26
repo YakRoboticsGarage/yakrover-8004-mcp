@@ -42,3 +42,11 @@ class RobotPlugin(ABC):
         Must match the function names passed to @mcp.tool exactly.
         """
         ...
+
+    async def bid(self, task_spec: dict) -> dict | None:
+        """Generate a bid for a task. Override in auction-participating plugins.
+
+        Returns bid parameters dict or None to decline.
+        Default: returns None (AD-2 backward-compatible).
+        """
+        return None

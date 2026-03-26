@@ -36,7 +36,10 @@ def create_robot_server(plugin: RobotPlugin) -> FastMCP:
     return mcp
 
 
-def create_fleet_server(mounted_robots: dict[str, str] | None = None) -> FastMCP:
+def create_fleet_server(
+    mounted_robots: dict[str, str] | None = None,
+    auction_engine=None,
+) -> FastMCP:
     """Create the fleet orchestrator MCP server (discovery + lifecycle).
 
     Args:
@@ -54,6 +57,14 @@ def create_fleet_server(mounted_robots: dict[str, str] | None = None) -> FastMCP
     from core.discovery import register_discovery_tools
 
     register_discovery_tools(mcp, mounted_robots=mounted_robots)
+
+    if auction_engine is not None:
+        try:
+            from auction.mcp_tools import register_auction_tools
+
+            register_auction_tools(mcp, auction_engine)
+        except ImportError:
+            pass  # auction package not installed, skip
 
     return mcp
 
