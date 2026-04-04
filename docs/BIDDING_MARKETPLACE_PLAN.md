@@ -318,19 +318,41 @@ class RobotMetadata:
 
 #### 3b. Update `registration.py`
 
-Write bidding terms as on-chain metadata using the keys the marketplace reads during discovery:
+Bidding terms are stored in the **IPFS agent card** (not the on-chain key-value store). Add them to the `agent.setMetadata()` dict in both `register_robot()` and `update_robot()` — the SDK includes them in the JSON uploaded to Pinata, and only the resulting CID is stored on-chain.
 
-```
-min_bid_price         → "50"              # cents (USD), matches getAgentWallet pattern
-accepted_currencies   → "usd,usdc"        # comma-separated
-task_categories       → "env_sensing"     # comma-separated marketplace category names
+```python
+metadata = {
+    "category": "robot",
+    "robot_type": meta.robot_type,
+    "fleet_provider": meta.fleet_provider,
+    "fleet_domain": meta.fleet_domain,
+}
+if meta.bidding_terms:
+    terms = meta.bidding_terms
+    category_map = {"sensor_reading": "env_sensing", "camera": "visual_inspection"}
+    categories = ",".join(category_map.get(t, t) for t in terms.accepted_task_types)
+    metadata.update({
+        "min_bid_price": str(terms.min_price_cents),
+        "accepted_currencies": f"{terms.currency},usdc",
+        "task_categories": categories,
+    })
+agent.setMetadata(metadata)
 ```
 
-**Mapping:** `BiddingTerms.accepted_task_types` (`["sensor_reading", "camera"]`) is translated to marketplace categories (`"env_sensing,visual_inspection"`) before writing on-chain.
+**Why IPFS, not on-chain KV store:**
+- Cheaper to update — changing any number of bidding fields is always 1 tx (update CID), vs. 1 tx per key on-chain
+- Richer structure — agent card is full JSON, no bytes32 key limitations
+- Marketplace already fetches the agent card during discovery anyway
+
+**To update bidding terms after registration**, change `BiddingTerms` in the plugin and run:
+```bash
+uv run python scripts/update_agent.py tumbller 11155111:989
+```
+This re-uploads the agent card to IPFS with the new values and submits one update tx. `fix_metadata.py` is not needed for bidding terms — it only handles the flat on-chain KV keys (`category`, `robot_type`, etc.).
 
 #### 3c. Update `discovery.py`
 
-When discovering robots, read and return bidding metadata so clients know what robots accept before posting a task.
+When discovering robots, read bidding terms from the fetched agent card JSON and include them in the discovery result so clients know what robots accept before posting a task.
 
 Add to discovery result:
 ```json
@@ -476,7 +498,7 @@ The `robot_execute_task` tool must return this structure. The marketplace wraps 
 The marketplace wraps this in:
 ```json
 {
-  "schema": "yak-robotics/delivery/v1",
+  "schema": "yakrover/delivery/v1",
   "request_id": "...",
   "robot_id": "989",
   "delivered_at": "2026-04-02T10:30:00Z",
@@ -624,8 +646,8 @@ src/
 | `src/core/plugin.py` | Add `BiddingTerms` dataclass, `execute()` abstract method, field to `RobotMetadata` |
 | `src/core/marketplace_tools.py` | Shared helper to register `robot_submit_bid`, `robot_execute_task`, `robot_get_pricing` on any robot MCP server |
 | `src/core/server.py` | Call `marketplace_tools` in `create_robot_server()`; instantiate `AuctionEngine`; mount webhook route |
-| `src/core/registration.py` | Write bidding terms as on-chain metadata keys (`min_bid_price`, `accepted_currencies`, `task_categories`); accept `chain` param |
-| `src/core/discovery.py` | Read and return bidding terms in discovery results; accept `chain` param |
+| `src/core/registration.py` | Add bidding terms to `agent.setMetadata()` in both `register_robot()` and `update_robot()` so they land in the IPFS agent card; accept `chain` param |
+| `src/core/discovery.py` | Read bidding terms from fetched agent card JSON and include in discovery results; accept `chain` param |
 | `src/robots/tumbller/__init__.py` | Override `bid()` and `execute()`, set `bidding_terms` in metadata |
 | `src/robots/fakerover/__init__.py` | Align existing `bid()` to new schema, add `execute()`, set `bidding_terms` in metadata |
 | `src/robots/tello/__init__.py` | Override `bid()` and `execute()` for camera tasks |
@@ -633,7 +655,7 @@ src/
 | `scripts/register.py` | Add `--chain` flag |
 | `scripts/discover.py` | Add `--chain` flag |
 | `scripts/update_agent.py` | Add `--chain` flag |
-| `scripts/fix_metadata.py` | Add `--chain` flag |
+| `scripts/fix_metadata.py` | Add `--chain` flag (bidding terms are in IPFS, not here — use `update_agent.py` to change them) |
 | `.env` (template) | Add `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_ACCOUNT_ID`, `CHAIN` |
 
 ---
