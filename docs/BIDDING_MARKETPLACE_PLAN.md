@@ -60,9 +60,9 @@ Create `src/auction/` as a new internal package (not a robot plugin — it's fle
 ```python
 @dataclass
 class TaskSpec:
-    task_type: str              # e.g. "move_patrol", "sensor_reading", "photo_survey"
+    task_type: str              # v1 values: "sensor_reading", "camera"
     description: str            # Human-readable task description
-    parameters: dict            # Task-specific params (waypoints, duration, etc.)
+    parameters: dict            # Task-specific params (duration, location, etc.)
     max_budget_cents: int       # Client's max willingness to pay, in cents
     requester_id: str           # Who's asking
 
@@ -132,30 +132,57 @@ Override `bid()` in each robot plugin to return real bids based on capabilities.
 
 ```python
 async def bid(self, task_spec: dict) -> dict | None:
-    # Tumbller can handle: sensor readings (has temp/humidity sensor)
+    # Tumbller handles sensor_reading (has temp/humidity sensor)
     if task_spec.get("task_type") != "sensor_reading":
-        return None  # decline — can't do this
+        return None
 
-    # Check if robot is online before bidding
-    from .client import TumbllerClient
-    client = TumbllerClient()
-    try:
-        await client.get("/info")
-    except Exception:
-        return None  # offline, can't bid
+    # Reuse the long-lived client stored by register_tools(), or
+    # create a temporary one and close it after the liveness check.
+    client = getattr(self, "client", None)
+    if client is None:
+        from .client import TumbllerClient
+        client = TumbllerClient()
+        try:
+            await client.get("/info")
+        except Exception:
+            await client.aclose()
+            return None  # offline, can't bid
+        await client.aclose()
+    else:
+        try:
+            await client.get("/info")
+        except Exception:
+            return None
+
+    # Read bidding terms from metadata (dataclass attribute access)
+    terms = self.metadata().bidding_terms
+    min_price = terms.min_price_cents if terms else 50
 
     return {
-        "price_cents": max(self.bidding_terms.get("min_price_cents", 50), ...),
-        "estimated_duration_secs": 10,
-        "confidence": 0.95,
-        "capabilities_match": ["tumbller_get_temperature_humidity"],
-        "requires_approval": True,  # default: human-in-the-loop
+        "robot_id": self.metadata().name,
+        "price": str(min_price / 100),           # dollars as string, matching FakeRover schema
+        "sla_commitment_seconds": 30,
+        "ai_confidence": 0.95,
+        "capability_metadata": {
+            "sensors": [
+                {"type": "temperature", "model": "SHT3x"},
+                {"type": "humidity",    "model": "SHT3x"},
+            ],
+        },
     }
 ```
 
+**Note on bid schema:** The engine normalises raw bid dicts returned by plugins into the `Bid` dataclass. Plugins return a raw dict (price as dollar string, `sla_commitment_seconds`, etc.) — the engine converts `price` → `price_cents` and maps fields. This keeps plugin code simple while the engine owns the canonical schema.
+
 #### 2b. FakeRover (`src/robots/fakerover/__init__.py`)
 
-Same pattern but always online (simulator). Accepts `sensor_reading` tasks. Good for testing the full bid flow without hardware.
+`bid()` is **already implemented** in `src/robots/fakerover/__init__.py`. It:
+- Reuses `self.client` if `register_tools()` was called, otherwise creates a temporary one
+- Checks liveness (`/info`) and sensor availability (`/sensor/ht`)
+- Filters on `task_spec["capability_requirements"]["hard"]["sensors_required"]`
+- Returns a rich bid dict including `price` (string), `sla_commitment_seconds`, `ai_confidence`, and `capability_metadata`
+
+Stage 2b work is: verify this implementation against the final `Bid` dataclass schema and add `bidding_terms` to `FakeRoverPlugin.metadata()` (Stage 3 prerequisite).
 
 #### 2c. Tello
 
@@ -218,12 +245,15 @@ Add to discovery result:
 #### 4a. New module: `src/auction/payments.py`
 
 ```python
-class StripePaymentHandler:
-    def __init__(self, api_key: str, webhook_secret: str):
-        self.stripe = stripe
-        stripe.api_key = api_key
+import stripe  # pip install stripe
 
-    def create_checkout_session(self, auction: AuctionResult) -> str:
+class StripePaymentHandler:
+    def __init__(self, api_key: str, webhook_secret: str, base_url: str):
+        stripe.api_key = api_key          # module-level — used throughout
+        self.webhook_secret = webhook_secret
+        self.base_url = base_url          # e.g. "https://<ngrok-domain>" from NGROK_DOMAIN env var
+
+    def create_checkout_session(self, auction_id: str, auction: AuctionResult) -> str:
         """Create a Stripe Checkout session for the accepted bid.
         Returns the checkout URL."""
         session = stripe.checkout.Session.create(
@@ -240,15 +270,19 @@ class StripePaymentHandler:
                 "quantity": 1,
             }],
             mode="payment",
-            success_url=f"{base_url}/auction/{auction_id}/success",
-            cancel_url=f"{base_url}/auction/{auction_id}/cancel",
+            success_url=f"{self.base_url}/auction/{auction_id}/success",
+            cancel_url=f"{self.base_url}/auction/{auction_id}/cancel",
             metadata={"auction_id": auction_id},
         )
         return session.url
 
-    async def handle_webhook(self, payload, sig_header) -> str | None:
-        """Process Stripe webhook — returns auction_id if payment succeeded."""
-        ...
+    async def handle_webhook(self, payload: bytes, sig_header: str) -> str | None:
+        """Verify and process a Stripe webhook event.
+        Returns auction_id if payment succeeded, None otherwise."""
+        event = stripe.Webhook.construct_event(payload, sig_header, self.webhook_secret)
+        if event["type"] == "checkout.session.completed":
+            return event["data"]["object"]["metadata"]["auction_id"]
+        return None
 ```
 
 #### 4b. Stripe Connect (receiving money)
