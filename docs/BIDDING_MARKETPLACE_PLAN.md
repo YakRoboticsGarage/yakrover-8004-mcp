@@ -2,7 +2,19 @@
 
 ## Overview
 
-Add the ability for robots in the fleet to **receive task requests, generate bids (price quotes), and execute paid work** — with real money flowing through Stripe. An LLM client (or another agent) posts a task; robots bid; the client accepts a bid; the robot executes; payment settles.
+Add the ability for robots in the fleet to **receive task requests, generate bids, execute paid work, and get paid** — via USDC on-chain (primary) or Stripe credit card (optional). The external YAK ROBOTICS marketplace orchestrates the auction; this repo implements the robot side.
+
+```
+1. DISCOVER    Robot registered on ERC-8004. Marketplace finds it.
+2. BID         Buyer posts task → marketplace calls robot_submit_bid → robot evaluates and returns price.
+3. AWARD       Buyer picks a winner. Robot is notified via task acceptance.
+4. EXECUTE     Marketplace calls robot_execute_task → robot does the work.
+5. DELIVER     Robot returns structured JSON. Marketplace uploads to IPFS.
+6. VERIFY      Buyer reviews data via IPFS link.
+7. PAY         Buyer releases payment → 88% to robot wallet (USDC) or Stripe account (card).
+```
+
+**This repo's responsibility:** steps 2 and 4 — expose `robot_submit_bid`, `robot_execute_task`, and `robot_get_pricing` as MCP tools on each robot's server, and keep on-chain metadata up to date.
 
 ---
 
@@ -20,31 +32,32 @@ Add the ability for robots in the fleet to **receive task requests, generate bid
 
 ## Architecture
 
+Two layers — external marketplace calling robot tools, and internal fleet orchestration for LLM clients:
+
 ```
-Client (LLM / Agent)
+External Marketplace (yakrover-marketplace)
   │
-  ├─ POST task via MCP tool ──► Fleet Server (/fleet/mcp)
-  │                                │
-  │                          AuctionEngine
-  │                           │         │
-  │                     bid request   bid request
-  │                           │         │
-  │                     TumbllerPlugin  TelloPlugin
-  │                      .bid()          .bid()
-  │                           │         │
-  │                      {price, ETA}   None (decline)
-  │                           │
-  │  ◄── bid results ─────────┘
+  ├─ calls robot_submit_bid ──► Robot MCP Server (/{robot}/mcp)
+  │                               └─ plugin.bid() logic
   │
-  ├─ accept_bid via MCP tool ──► AuctionEngine
-  │                                │
-  │                          Stripe checkout session
-  │                                │
-  │                          on payment success
-  │                                │
-  │                          robot executes task
-  │                                │
-  │  ◄── execution result ─────────┘
+  ├─ calls robot_execute_task ──► Robot MCP Server
+  │                               └─ actual sensor/camera work
+  │
+  ├─ calls robot_get_pricing ──► Robot MCP Server
+  │                               └─ BiddingTerms from metadata()
+  │
+  ├─ payment: USDC ──► robot on-chain wallet (getAgentWallet, 88%)
+  │           card  ──► Stripe Connect Express account (88%)
+  │                     platform keeps 12% commission either way
+  │
+  └─ uploads delivery_data to IPFS, returns CID to buyer
+
+Internal Fleet Server (/fleet/mcp) — for LLM clients on this gateway
+  │
+  ├─ fleet_request_bids ──► AuctionEngine ──► plugin.bid() (all plugins)
+  ├─ fleet_accept_bid
+  ├─ fleet_execute_task
+  └─ fleet_get_auction_status
 ```
 
 ---
@@ -60,30 +73,40 @@ Create `src/auction/` as a new internal package (not a robot plugin — it's fle
 ```python
 @dataclass
 class TaskSpec:
-    task_type: str              # v1 values: "sensor_reading", "camera"
-    description: str            # Human-readable task description
-    parameters: dict            # Task-specific params (duration, location, etc.)
-    max_budget_cents: int       # Client's max willingness to pay, in cents
-    requester_id: str           # Who's asking
+    # Fields match robot_submit_bid tool input (what the marketplace sends)
+    task_description: str           # Human-readable
+    task_category: str              # v1: "env_sensing" (sensor) or "visual_inspection" (camera)
+    budget_ceiling: float           # Max the buyer pays, in USD
+    sla_seconds: int                # Deadline in seconds
+    capability_requirements: dict   # e.g. {"sensors_required": ["temperature", "humidity"]}
+    requester_id: str               # Who's asking
 
 @dataclass
 class Bid:
+    # Fields match robot_submit_bid tool output
     robot_name: str
-    price_cents: int            # Robot's asking price
-    estimated_duration_secs: int
-    confidence: float           # 0.0–1.0, how likely the robot can complete this
-    capabilities_match: list[str]  # Which of its tools apply to this task
-    requires_approval: bool     # Does the fleet operator need to approve execution?
+    willing_to_bid: bool
+    price: float                    # USD
+    currency: str                   # "usd" or "usdc"
+    sla_commitment_seconds: int
+    confidence: float               # 0.0–1.0
+    capabilities_offered: list[str]
+    notes: str
+    reason: str                     # populated if willing_to_bid=False
 
 @dataclass
 class AuctionResult:
     task: TaskSpec
     bids: list[Bid]
     winning_bid: Bid | None
-    status: str                 # "bidding", "accepted", "paid", "executing", "completed", "failed"
+    status: str                     # "bidding", "accepted", "paid", "executing", "completed", "failed"
+    payment_method: str | None      # "usdc" or "stripe"
     stripe_checkout_url: str | None
     execution_result: dict | None
+    delivery_ipfs_cid: str | None   # set after marketplace uploads delivery_data to IPFS
 ```
+
+**Note on `task_category` vs v1 task types:** Our v1 types (`sensor_reading`, `camera`) map to marketplace categories as follows — `sensor_reading` → `"env_sensing"`, `camera` → `"visual_inspection"`. The `robot_submit_bid` tool receives marketplace categories; `plugin.bid()` handles the translation internally.
 
 #### 1b. Engine (`src/auction/engine.py`)
 
@@ -124,6 +147,76 @@ Register these on the fleet server (the import path `auction.mcp_tools` is alrea
 | `fleet_execute_task` | Execute the accepted task (after payment or approval) |
 | `fleet_get_auction_status` | Check status of a specific auction |
 
+### Stage 1d. Robot-Side MCP Tools (per-robot server)
+
+The external marketplace calls these directly on each robot's MCP endpoint (`/{robot}/mcp`). Register them in each plugin's `register_tools()` via a shared helper in `src/core/marketplace_tools.py`:
+
+#### `robot_submit_bid`
+
+```python
+@mcp.tool
+async def robot_submit_bid(
+    task_description: str,
+    task_category: str,
+    budget_ceiling: float,
+    sla_seconds: int,
+    capability_requirements: dict,
+) -> dict:
+    """Evaluate a task and return a bid or decline."""
+    task_spec = {
+        "task_description": task_description,
+        "task_category": task_category,
+        "budget_ceiling": budget_ceiling,
+        "sla_seconds": sla_seconds,
+        "capability_requirements": capability_requirements,
+    }
+    result = await plugin.bid(task_spec)
+    if result is None:
+        return {"willing_to_bid": False, "reason": "Task not supported or robot unavailable."}
+    # Construct response from known fields to ensure schema compliance
+    return {
+        "willing_to_bid": True,
+        "price": result.get("price", 0),
+        "currency": result.get("currency", "usd"),
+        "sla_commitment_seconds": result.get("sla_commitment_seconds", 0),
+        "confidence": result.get("confidence", 0.5),
+        "capabilities_offered": result.get("capabilities_offered", []),
+        "notes": result.get("notes", ""),
+    }
+```
+
+#### `robot_execute_task`
+
+```python
+@mcp.tool
+async def robot_execute_task(
+    task_id: str,
+    task_description: str,
+    parameters: dict,
+) -> dict:
+    """Execute an accepted task. Returns delivery_data for IPFS upload."""
+    return await plugin.execute(task_id, task_description, parameters)
+```
+
+#### `robot_get_pricing`
+
+```python
+@mcp.tool
+async def robot_get_pricing() -> dict:
+    """Return this robot's pricing and availability."""
+    terms = plugin.metadata().bidding_terms
+    return {
+        "min_task_price_usd": (terms.min_price_cents / 100) if terms else 0.50,
+        "rate_per_minute_usd": (terms.rate_per_minute_cents / 100) if terms and terms.rate_per_minute_cents else 0.10,
+        "accepted_currencies": ["usd", "usdc"],
+        "max_concurrent_tasks": terms.max_concurrent_tasks if terms else 1,
+        "task_categories": terms.accepted_task_types if terms else [],
+        "availability": "online",  # plugins can override to check liveness
+    }
+```
+
+These three tools are added to each plugin's `tool_names()` list and registered alongside existing tools like `tumbller_move`.
+
 ### Stage 2: Plugin Bid Implementations
 
 Override `bid()` in each robot plugin to return real bids based on capabilities.
@@ -132,12 +225,24 @@ Override `bid()` in each robot plugin to return real bids based on capabilities.
 
 ```python
 async def bid(self, task_spec: dict) -> dict | None:
-    # Tumbller handles sensor_reading (has temp/humidity sensor)
-    if task_spec.get("task_type") != "sensor_reading":
+    # Tumbller handles env_sensing (has temp/humidity sensor)
+    # "sensor_reading" is our internal name; marketplace sends "env_sensing"
+    if task_spec.get("task_category") not in ("env_sensing", "sensor_reading"):
         return None
 
-    # Reuse the long-lived client stored by register_tools(), or
-    # create a temporary one and close it after the liveness check.
+    # Capability check — if the buyer specified required sensors, verify we have them
+    reqs = task_spec.get("capability_requirements") or {}
+    required_sensors = set(reqs.get("sensors_required", []))
+    if required_sensors and not required_sensors.issubset({"temperature", "humidity"}):
+        return None  # buyer needs sensors we don't have
+
+    # Budget check
+    terms = self.metadata().bidding_terms
+    min_price = (terms.min_price_cents / 100) if terms else 0.50
+    if task_spec.get("budget_ceiling", 0) < min_price:
+        return None
+
+    # Liveness check — reuse long-lived client or create and close a temp one
     client = getattr(self, "client", None)
     if client is None:
         from .client import TumbllerClient
@@ -154,35 +259,33 @@ async def bid(self, task_spec: dict) -> dict | None:
         except Exception:
             return None
 
-    # Read bidding terms from metadata (dataclass attribute access)
-    terms = self.metadata().bidding_terms
-    min_price = terms.min_price_cents if terms else 50
-
     return {
-        "robot_id": self.metadata().name,
-        "price": str(min_price / 100),           # dollars as string, matching FakeRover schema
+        "price": min_price,
+        "currency": "usd",
         "sla_commitment_seconds": 30,
-        "ai_confidence": 0.95,
-        "capability_metadata": {
-            "sensors": [
-                {"type": "temperature", "model": "SHT3x"},
-                {"type": "humidity",    "model": "SHT3x"},
-            ],
-        },
+        "confidence": 0.95,
+        "capabilities_offered": ["temperature", "humidity"],
+        "notes": "SHT3x sensor, accuracy ±0.3°C / ±2% RH.",
     }
 ```
-
-**Note on bid schema:** The engine normalises raw bid dicts returned by plugins into the `Bid` dataclass. Plugins return a raw dict (price as dollar string, `sla_commitment_seconds`, etc.) — the engine converts `price` → `price_cents` and maps fields. This keeps plugin code simple while the engine owns the canonical schema.
 
 #### 2b. FakeRover (`src/robots/fakerover/__init__.py`)
 
 `bid()` is **already implemented** in `src/robots/fakerover/__init__.py`. It:
 - Reuses `self.client` if `register_tools()` was called, otherwise creates a temporary one
 - Checks liveness (`/info`) and sensor availability (`/sensor/ht`)
-- Filters on `task_spec["capability_requirements"]["hard"]["sensors_required"]`
+- Filters on `task_spec["capability_requirements"]["sensors_required"]`
 - Returns a rich bid dict including `price` (string), `sla_commitment_seconds`, `ai_confidence`, and `capability_metadata`
 
-Stage 2b work is: verify this implementation against the final `Bid` dataclass schema and add `bidding_terms` to `FakeRoverPlugin.metadata()` (Stage 3 prerequisite).
+Stage 2b work is: align the existing `bid()` return to the Bid dataclass schema and add `bidding_terms` to `FakeRoverPlugin.metadata()`. Specific field renames needed:
+
+| Current (FakeRover) | Target (Bid schema) |
+|---------------------|---------------------|
+| `price` (string, e.g. `"0.50"`) | `price` (float, e.g. `0.50`) |
+| `ai_confidence` | `confidence` |
+| `capability_metadata` (nested dict) | `capabilities_offered` (flat list of strings) |
+| *(missing)* | `currency` (`"usd"`) |
+| *(missing)* | `notes` (string) |
 
 #### 2c. Tello
 
@@ -200,9 +303,11 @@ Add an optional `bidding_terms` field to `RobotMetadata`:
 @dataclass
 class BiddingTerms:
     min_price_cents: int = 50       # Floor price (e.g. 50 = $0.50)
+    rate_per_minute_cents: int | None = 10  # Per-minute rate (e.g. 10 = $0.10); None = flat price only
     currency: str = "usd"
     accepted_task_types: list[str] = field(default_factory=list)  # v1: "sensor_reading", "camera"
     max_duration_secs: int = 300    # Longest task the robot will accept
+    max_concurrent_tasks: int = 1   # How many tasks this robot can run simultaneously
     requires_approval: bool = True  # Whether fleet operator must approve before execution
 
 @dataclass
@@ -213,15 +318,15 @@ class RobotMetadata:
 
 #### 3b. Update `registration.py`
 
-When registering/updating, write bidding terms as on-chain metadata:
+Write bidding terms as on-chain metadata using the keys the marketplace reads during discovery:
 
 ```
-bidding_min_price_cents  → "50"
-bidding_currency         → "usd"
-bidding_task_types       → "sensor_reading" or "sensor_reading,camera"
-bidding_max_duration     → "300"
-bidding_requires_approval → "true"
+min_bid_price         → "50"              # cents (USD), matches getAgentWallet pattern
+accepted_currencies   → "usd,usdc"        # comma-separated
+task_categories       → "env_sensing"     # comma-separated marketplace category names
 ```
+
+**Mapping:** `BiddingTerms.accepted_task_types` (`["sensor_reading", "camera"]`) is translated to marketplace categories (`"env_sensing,visual_inspection"`) before writing on-chain.
 
 #### 3c. Update `discovery.py`
 
@@ -231,16 +336,25 @@ Add to discovery result:
 ```json
 {
   "bidding_terms": {
-    "min_price_cents": 50,
-    "currency": "usd",
-    "accepted_task_types": ["sensor_reading"],
-    "max_duration_secs": 300,
-    "requires_approval": true
+    "min_bid_price": 50,
+    "accepted_currencies": ["usd", "usdc"],
+    "task_categories": ["env_sensing"]
   }
 }
 ```
 
-### Stage 4: Stripe Payment Integration
+### Stage 4: Payment Integration
+
+#### Payment paths
+
+| Method | Default | Split | Setup required |
+|--------|---------|-------|----------------|
+| USDC (on-chain) | Yes | 88% to robot wallet, 12% platform | None — wallet already set via `setAgentWallet()` |
+| Stripe card | Optional | 88% to Stripe Connect Express account, 12% platform | Complete Stripe onboarding (KYC) |
+
+USDC flows directly to the wallet registered on-chain (`getAgentWallet(agentId)`). No code changes needed for this path — the marketplace handles it. Robot operators just need their wallet set.
+
+#### Stage 4a: Stripe Payment Integration (optional card path)
 
 #### 4a. New module: `src/auction/payments.py`
 
@@ -285,14 +399,14 @@ class StripePaymentHandler:
         return None
 ```
 
-#### 4b. Stripe Connect (receiving money)
+#### 4b. Stripe Connect Express (receiving card payments)
 
-For the robot fleet to **receive real money**, set up a Stripe Connect account:
-
-- Fleet operator creates a **Stripe Standard account** (or Connect Express)
-- `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` go in `.env`
-- Checkout sessions are created with the fleet's Stripe account
-- Future: per-robot Stripe Connect sub-accounts for multi-operator fleets
+- Fleet operator creates a **Stripe Connect Express** account (not Standard — Express is what the marketplace onboards operators onto)
+- The marketplace platform sends the operator an onboarding link; operator completes KYC (~5 min)
+- Operator shares their `acct_...` ID with the marketplace
+- Checkout sessions use "destination charges" — buyer pays via Checkout, 88% routed to robot's Express account, 12% retained by platform
+- `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` go in `.env` for the platform side
+- `STRIPE_CONNECT_ACCOUNT_ID` — operator's `acct_...` ID, stored in `.env`
 
 #### 4c. FastAPI webhook endpoint
 
@@ -309,12 +423,12 @@ async def stripe_webhook(request: Request):
 #### 4d. Environment variables
 
 ```
-STRIPE_SECRET_KEY       — Stripe API secret key
-STRIPE_WEBHOOK_SECRET   — Webhook endpoint signing secret
-STRIPE_SUCCESS_URL      — (optional) Custom redirect after payment
+STRIPE_SECRET_KEY            — Stripe API secret key (platform)
+STRIPE_WEBHOOK_SECRET        — Webhook endpoint signing secret
+STRIPE_CONNECT_ACCOUNT_ID    — Operator's acct_... ID from Stripe Connect Express onboarding
 ```
 
-Add `stripe` to `pyproject.toml` dependencies (optional extra: `marketplace`).
+Add `stripe` to `pyproject.toml` dependencies (optional extra: `marketplace`). USDC path requires no additional dependencies.
 
 ### Stage 5: Approval Flow
 
@@ -333,6 +447,66 @@ Two modes for task execution:
 3. Result is stored and queryable via `fleet_get_auction_status`
 
 The `requires_approval` flag is set per-robot in `BiddingTerms` and stored on-chain so clients know upfront.
+
+### Stage 5b: Delivery Format
+
+The `robot_execute_task` tool must return this structure. The marketplace wraps it in a delivery envelope and uploads to IPFS; the robot returns only `delivery_data`.
+
+```python
+# Minimum required fields in execute() return value:
+{
+    "success": True,
+    "delivery_data": {
+        "readings": [...],          # sensor data or image references
+        "summary": "...",           # human-readable summary
+        "robot_id": "989",          # ERC-8004 agent ID integer
+        "robot_name": "Tumbller Self-Balancing Robot",
+        "duration_seconds": 30,
+    }
+}
+
+# On failure:
+{
+    "success": False,
+    "error": "Reason for failure.",
+    "partial_data": {...},          # whatever was collected before failure
+}
+```
+
+The marketplace wraps this in:
+```json
+{
+  "schema": "yak-robotics/delivery/v1",
+  "request_id": "...",
+  "robot_id": "989",
+  "delivered_at": "2026-04-02T10:30:00Z",
+  "data": { "...delivery_data from robot..." }
+}
+```
+
+The robot does **not** do the IPFS upload — the marketplace handles it. The robot just returns clean JSON.
+
+### Stage 5c: Feedback Tool
+
+After delivering results, robots (or the fleet server on their behalf) should submit feedback via the marketplace's `auction_submit_feedback` tool. This affects the robot's reputation score (15% weight in bid scoring).
+
+```python
+# Called after successful task delivery:
+await marketplace_mcp.call_tool("auction_submit_feedback", {
+    "request_id": task_id,
+    "role": "operator",
+    "rating": 5,
+    "comment": "Completed within SLA. All sensor readings nominal.",
+    "robot_id": agent_id,
+})
+```
+
+The marketplace returns:
+```json
+{"recorded": true, "request_id": "...", "rating": 5}
+```
+
+This is optional for v1 but should be wired in once the marketplace MCP endpoint is reachable from the fleet server.
 
 ### Stage 6: Multi-Chain Registration
 
@@ -447,32 +621,36 @@ src/
 
 | File | Changes |
 |------|---------|
-| `src/core/plugin.py` | Add `BiddingTerms` dataclass, add field to `RobotMetadata` |
-| `src/core/server.py` | Instantiate `AuctionEngine`, pass to `create_fleet_server`, mount webhook route |
-| `src/core/registration.py` | Write bidding terms as on-chain metadata keys; accept `chain` param |
+| `src/core/plugin.py` | Add `BiddingTerms` dataclass, `execute()` abstract method, field to `RobotMetadata` |
+| `src/core/marketplace_tools.py` | Shared helper to register `robot_submit_bid`, `robot_execute_task`, `robot_get_pricing` on any robot MCP server |
+| `src/core/server.py` | Call `marketplace_tools` in `create_robot_server()`; instantiate `AuctionEngine`; mount webhook route |
+| `src/core/registration.py` | Write bidding terms as on-chain metadata keys (`min_bid_price`, `accepted_currencies`, `task_categories`); accept `chain` param |
 | `src/core/discovery.py` | Read and return bidding terms in discovery results; accept `chain` param |
-| `src/robots/tumbller/__init__.py` | Override `bid()`, set `bidding_terms` in metadata |
-| `src/robots/fakerover/__init__.py` | Override `bid()`, set `bidding_terms` in metadata |
-| `src/robots/tello/__init__.py` | Override `bid()` for aerial tasks |
+| `src/robots/tumbller/__init__.py` | Override `bid()` and `execute()`, set `bidding_terms` in metadata |
+| `src/robots/fakerover/__init__.py` | Align existing `bid()` to new schema, add `execute()`, set `bidding_terms` in metadata |
+| `src/robots/tello/__init__.py` | Override `bid()` and `execute()` for camera tasks |
 | `pyproject.toml` | Add `stripe` dependency, `marketplace` optional extra |
 | `scripts/register.py` | Add `--chain` flag |
 | `scripts/discover.py` | Add `--chain` flag |
 | `scripts/update_agent.py` | Add `--chain` flag |
 | `scripts/fix_metadata.py` | Add `--chain` flag |
-| `.env` (template) | Add `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `CHAIN` |
+| `.env` (template) | Add `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_ACCOUNT_ID`, `CHAIN` |
 
 ---
 
 ## Implementation Order
 
 1. **Stage 6** — Multi-chain support (small, self-contained, unblocks Base registration immediately)
-2. **Stage 1a+1b** — Models + Engine (no external deps, testable in isolation)
-3. **Stage 2b** — FakeRover bid implementation (test without hardware)
-4. **Stage 1c** — MCP tools (end-to-end bid flow works with fakerover)
-5. **Stage 3** — On-chain bidding terms metadata
-6. **Stage 2a+2c** — Tumbller + Tello bid implementations
-7. **Stage 4** — Stripe integration (last, because everything else works without it)
-8. **Stage 5** — Approval flow refinement
+2. **Stage 1a+1b** — Models + Engine core
+3. **Stage 1d** — Robot-side MCP tools (`robot_submit_bid`, `robot_execute_task`, `robot_get_pricing`) — this is what the external marketplace actually calls; highest priority after models
+4. **Stage 2b** — Align FakeRover bid/execute to new schema; test full bid+execute flow without hardware
+5. **Stage 1c** — Fleet server auction tools (LLM-facing orchestration layer)
+6. **Stage 3** — On-chain bidding terms (`min_bid_price`, `accepted_currencies`, `task_categories`)
+7. **Stage 5b** — Delivery format (standardise `execute()` return across all plugins)
+8. **Stage 2a+2c** — Tumbller + Tello bid/execute implementations
+9. **Stage 4** — Payment integration: USDC path is free (wallet already exists); Stripe Connect Express last
+10. **Stage 5** — Approval flow refinement
+11. **Stage 5c** — Feedback tool (lowest priority, marketplace must be reachable first)
 
 ---
 
