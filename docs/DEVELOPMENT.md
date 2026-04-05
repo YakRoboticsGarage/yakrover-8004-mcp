@@ -139,6 +139,87 @@ Final polish and migration away from single-robot repos.
 
 ---
 
+---
+
+## Phase 2: Bidding Marketplace
+
+Implementation of the robot-side bidding marketplace. See [BIDDING_MARKETPLACE_PLAN.md](BIDDING_MARKETPLACE_PLAN.md) for full design.
+
+The external marketplace (`yakrover-marketplace`) calls robot MCP tools directly. This repo implements the robot side: bid evaluation, task execution, on-chain bidding terms, and payment receipt.
+
+Implementation order from the plan: Stage 6 → 1a/1b → 1d → 2b → 1c → 3 → 5b → 2a/2c → 4 → 5 → 5c.
+
+---
+
+### Stage 6: Multi-Chain Support
+
+Add `--chain` flag to all CLI scripts so robots can be registered and discovered on any supported EVM chain. Single source of truth for chain config in `src/core/chains.py`.
+
+- [x] Create `src/core/chains.py` — `CHAINS` config map (`eth-sepolia`, `eth-mainnet`, `base-sepolia`, `base-mainnet`); `get_chain()` resolves explicit arg → `CHAIN` env var → `eth-sepolia` default; returns `{name, chain_id, rpc}` dict
+- [x] Update `src/core/registration.py` — `_make_sdk()`, `register_robot()`, `update_robot()`, `fix_metadata()` all accept `chain: str | None`; `RPC_URL` env override preserved; chain name printed in status messages
+- [x] Update `src/core/discovery.py` — `_get_sdk()` and `discover_robots()` accept `chain`; `discover_robot_agents` MCP tool exposes `chain` param to LLM clients
+- [x] Add `--chain` flag to `scripts/register.py`
+- [x] Add `--chain` flag to `scripts/discover.py` (also prints chain name/ID in query header)
+- [x] Add `--chain` flag to `scripts/update_agent.py`
+- [x] Add `--chain` flag to `scripts/fix_metadata.py`
+- [ ] Verify: `uv run python scripts/register.py tumbller --chain base-mainnet` — registers on Base mainnet
+- [ ] Verify: `uv run python scripts/discover.py --provider yakrover --chain base-sepolia` — queries Base Sepolia
+- [ ] Verify: `CHAIN=base-mainnet uv run python scripts/discover.py` — env var respected
+
+---
+
+### Stage 1: Auction Engine Core (`src/auction/`)
+
+- [ ] **1a** — Create `src/auction/models.py` — `TaskSpec`, `Bid`, `AuctionResult` dataclasses
+- [ ] **1b** — Create `src/auction/engine.py` — `AuctionEngine` (bid fan-out, acceptance, execution, `busy` set for concurrency guard)
+- [ ] **1c** — Create `src/auction/mcp_tools.py` — fleet-level tools: `fleet_request_bids`, `fleet_list_auctions`, `fleet_accept_bid`, `fleet_execute_task`, `fleet_get_auction_status`
+
+---
+
+### Stage 1d: Robot-Side MCP Tools
+
+Shared helper that registers marketplace tools on each robot's MCP server. External marketplace calls these directly at `/{robot}/mcp`.
+
+- [ ] Create `src/core/marketplace_tools.py` — registers `robot_submit_bid`, `robot_execute_task`, `robot_get_pricing` on any robot MCP server
+- [ ] Call `marketplace_tools` in `create_robot_server()` so all plugins get the tools automatically
+- [ ] Add the three tool names to each plugin's `tool_names()` list
+
+---
+
+### Stage 2: Plugin Bid Implementations
+
+- [ ] **2a** — `src/robots/tumbller/__init__.py` — override `bid()` (env_sensing / sensor_reading, liveness check) and `execute()` (temperature/humidity reading, delivery_data format)
+- [ ] **2b** — `src/robots/fakerover/__init__.py` — align existing `bid()` to Bid schema (price float, `ai_confidence` → `confidence`, `capability_metadata` → `capabilities_offered` flat list, add `currency` + `notes`); add `execute()` and `bidding_terms` to `metadata()`
+- [ ] **2c** — `src/robots/tello/__init__.py` — override `bid()` (camera tasks) and `execute()` (photo/video, delivery_data format)
+
+---
+
+### Stage 3: Bidding Terms in On-Chain Metadata
+
+- [ ] Add `BiddingTerms` dataclass and `bidding_terms` field to `RobotMetadata` in `src/core/plugin.py`
+- [ ] Update `registration.py` — serialize bidding terms as flat keys (`min_bid_price`, `accepted_currencies`, `task_categories`) into the IPFS agent card via `agent.setMetadata()`
+- [ ] Update `discovery.py` — parse bidding terms from fetched agent card JSON and include in discovery result
+
+---
+
+### Stage 4: Payment Integration
+
+- [ ] Create `src/auction/payments.py` — `StripePaymentHandler` (checkout session creation, webhook verification)
+- [ ] Create `src/auction/webhooks.py` — FastAPI `/stripe/webhook` route
+- [ ] Wire webhook route into gateway in `server.py`
+- [ ] Add `stripe` to `pyproject.toml` as optional `marketplace` extra
+- [ ] Document `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_ACCOUNT_ID` in `.env.example`
+
+---
+
+### Stage 5: Approval Flow + Delivery Format
+
+- [ ] **5b** — Standardize `execute()` return across all plugins: `{success, delivery_data: {readings, summary, robot_id, robot_name, duration_seconds}}` / `{success: false, error, partial_data}`
+- [ ] **5** — Implement `requires_approval` flag from `BiddingTerms`; Mode A (human-in-the-loop) and Mode B (autonomous) execution paths in `AuctionEngine`
+- [ ] **5c** — Wire `auction_submit_feedback` call after successful delivery (optional for v1; blocked on marketplace MCP reachability)
+
+---
+
 ## Key Findings and Lessons Learned
 
 ### Dependency Resolution
