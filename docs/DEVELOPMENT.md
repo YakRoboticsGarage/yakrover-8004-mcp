@@ -168,8 +168,8 @@ Add `--chain` flag to all CLI scripts so robots can be registered and discovered
 
 ### Stage 1: Auction Engine Core (`src/auction/`)
 
-- [ ] **1a** — Create `src/auction/models.py` — `TaskSpec`, `Bid`, `AuctionResult` dataclasses
-- [ ] **1b** — Create `src/auction/engine.py` — `AuctionEngine` (bid fan-out, acceptance, execution, `busy` set for concurrency guard)
+- [x] **1a** — Create `src/auction/models.py` — `TaskSpec`, `Bid`, `AuctionResult` dataclasses
+- [x] **1b** — Create `src/auction/engine.py` — `AuctionEngine` (bid fan-out, acceptance, execution, `busy` set for concurrency guard)
 - [ ] **1c** — Create `src/auction/mcp_tools.py` — fleet-level tools: `fleet_request_bids`, `fleet_list_auctions`, `fleet_accept_bid`, `fleet_execute_task`, `fleet_get_auction_status`
 
 ---
@@ -178,9 +178,9 @@ Add `--chain` flag to all CLI scripts so robots can be registered and discovered
 
 Shared helper that registers marketplace tools on each robot's MCP server. External marketplace calls these directly at `/{robot}/mcp`.
 
-- [ ] Create `src/core/marketplace_tools.py` — registers `robot_submit_bid`, `robot_execute_task`, `robot_get_pricing` on any robot MCP server
-- [ ] Call `marketplace_tools` in `create_robot_server()` so all plugins get the tools automatically
-- [ ] Add the three tool names to each plugin's `tool_names()` list
+- [x] Create `src/core/marketplace_tools.py` — registers `robot_submit_bid`, `robot_execute_task`, `robot_get_pricing` on any robot MCP server
+- [x] Call `marketplace_tools` in `create_robot_server()` so all plugins get the tools automatically
+- [x] Add the three tool names to each plugin's `tool_names()` list
 
 ---
 

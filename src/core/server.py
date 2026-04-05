@@ -33,6 +33,10 @@ def create_robot_server(plugin: RobotPlugin) -> FastMCP:
         auth=auth,
     )
     plugin.register_tools(mcp)
+
+    from core.marketplace_tools import register as register_marketplace_tools
+    register_marketplace_tools(mcp, plugin)
+
     return mcp
 
 

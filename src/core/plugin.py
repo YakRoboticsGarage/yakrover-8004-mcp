@@ -47,6 +47,15 @@ class RobotPlugin(ABC):
         """Generate a bid for a task. Override in auction-participating plugins.
 
         Returns bid parameters dict or None to decline.
-        Default: returns None (AD-2 backward-compatible).
+        Default: returns None (backward-compatible opt-out).
         """
         return None
+
+    async def execute(self, task_id: str, task_description: str, parameters: dict) -> dict:
+        """Execute an accepted task. Override in auction-participating plugins.
+
+        Returns a delivery_data dict with at minimum {"success": bool}.
+        Default: returns a not-implemented failure so the engine marks the
+        auction as 'failed' rather than crashing.
+        """
+        return {"success": False, "error": "execute() not implemented for this plugin."}

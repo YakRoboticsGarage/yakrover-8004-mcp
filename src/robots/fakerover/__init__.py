@@ -17,6 +17,9 @@ class FakeRoverPlugin(RobotPlugin):
             "fakerover_move",
             "fakerover_is_online",
             "fakerover_get_temperature_humidity",
+            "robot_submit_bid",
+            "robot_execute_task",
+            "robot_get_pricing",
         ]
 
     def register_tools(self, mcp):

@@ -17,6 +17,9 @@ class TumbllerPlugin(RobotPlugin):
             "tumbller_move",
             "tumbller_is_online",
             "tumbller_get_temperature_humidity",
+            "robot_submit_bid",
+            "robot_execute_task",
+            "robot_get_pricing",
         ]
 
     def register_tools(self, mcp):

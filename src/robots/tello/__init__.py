@@ -23,6 +23,9 @@ class TelloPlugin(RobotPlugin):
             "tello_get_attitude",
             "tello_get_drone_info",
             "tello_is_online",
+            "robot_submit_bid",
+            "robot_execute_task",
+            "robot_get_pricing",
         ]
 
     def register_tools(self, mcp):
