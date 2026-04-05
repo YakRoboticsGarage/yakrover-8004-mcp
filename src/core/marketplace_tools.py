@@ -47,10 +47,16 @@ def register(mcp: FastMCP, plugin: RobotPlugin) -> None:
                 "willing_to_bid": False,
                 "reason": "Task not supported or robot unavailable.",
             }
+        price = float(result.get("price", 0))
+        if price > budget_ceiling:
+            return {
+                "willing_to_bid": False,
+                "reason": f"Bid price {price} exceeds budget ceiling {budget_ceiling}.",
+            }
         # Normalise to schema — fakerover uses "ai_confidence", target field is "confidence"
         return {
             "willing_to_bid": True,
-            "price": float(result.get("price", 0)),
+            "price": price,
             "currency": result.get("currency", "usd"),
             "sla_commitment_seconds": int(result.get("sla_commitment_seconds", 0)),
             "confidence": float(result.get("confidence", result.get("ai_confidence", 0.5))),
@@ -84,14 +90,20 @@ def register(mcp: FastMCP, plugin: RobotPlugin) -> None:
         BiddingTerms once Stage 3 is implemented; until then, defaults are returned.
         """
         terms = getattr(plugin.metadata(), "bidding_terms", None)
+        if terms is not None:
+            rate = (
+                terms.rate_per_minute_cents / 100
+                if terms.rate_per_minute_cents is not None
+                else None  # None = flat price only, no per-minute rate
+            )
+            currencies = list({terms.currency, "usdc"})
+        else:
+            rate = 0.10
+            currencies = ["usd", "usdc"]
         return {
             "min_task_price_usd": (terms.min_price_cents / 100) if terms else 0.50,
-            "rate_per_minute_usd": (
-                (terms.rate_per_minute_cents / 100)
-                if terms and terms.rate_per_minute_cents
-                else 0.10
-            ),
-            "accepted_currencies": ["usd", "usdc"],
+            "rate_per_minute_usd": rate,
+            "accepted_currencies": currencies,
             "max_concurrent_tasks": terms.max_concurrent_tasks if terms else 1,
             "task_categories": terms.accepted_task_types if terms else [],
             "availability": "online",

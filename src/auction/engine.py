@@ -89,6 +89,11 @@ class AuctionEngine:
                 f"Auction {auction_id} must be 'accepted' before executing (status: {auction.status!r})"
             )
 
+        if auction.winning_bid is None:
+            raise ValueError(
+                f"Auction {auction_id} has status 'accepted' but no winning_bid is set"
+            )
+
         robot_name = auction.winning_bid.robot_name
         plugin = self.plugins.get(robot_name)
         if plugin is None:
