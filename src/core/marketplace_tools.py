@@ -47,7 +47,13 @@ def register(mcp: FastMCP, plugin: RobotPlugin) -> None:
                 "willing_to_bid": False,
                 "reason": "Task not supported or robot unavailable.",
             }
-        price = float(result.get("price", 0))
+        try:
+            price = float(result.get("price", 0))
+        except (TypeError, ValueError):
+            return {
+                "willing_to_bid": False,
+                "reason": "Plugin returned an invalid price value.",
+            }
         if price > budget_ceiling:
             return {
                 "willing_to_bid": False,
@@ -96,7 +102,7 @@ def register(mcp: FastMCP, plugin: RobotPlugin) -> None:
                 if terms.rate_per_minute_cents is not None
                 else None  # None = flat price only, no per-minute rate
             )
-            currencies = list({terms.currency, "usdc"})
+            currencies = [terms.currency] + ([] if terms.currency == "usdc" else ["usdc"])
         else:
             rate = 0.10
             currencies = ["usd", "usdc"]

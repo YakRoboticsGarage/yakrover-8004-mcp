@@ -1,6 +1,6 @@
 [project]
 name = "yakrover-8004-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Modular MCP framework for multi-robot fleet control and discovery"
 readme = "README.md"
 requires-python = ">=3.13"

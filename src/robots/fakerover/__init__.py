@@ -1,3 +1,4 @@
+from core.marketplace_tools import MARKETPLACE_TOOL_NAMES
 from core.plugin import RobotPlugin, RobotMetadata
 
 
@@ -17,9 +18,7 @@ class FakeRoverPlugin(RobotPlugin):
             "fakerover_move",
             "fakerover_is_online",
             "fakerover_get_temperature_humidity",
-            "robot_submit_bid",
-            "robot_execute_task",
-            "robot_get_pricing",
+            *MARKETPLACE_TOOL_NAMES,
         ]
 
     def register_tools(self, mcp):

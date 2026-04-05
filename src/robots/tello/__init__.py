@@ -1,3 +1,4 @@
+from core.marketplace_tools import MARKETPLACE_TOOL_NAMES
 from core.plugin import RobotPlugin, RobotMetadata
 
 
@@ -23,9 +24,7 @@ class TelloPlugin(RobotPlugin):
             "tello_get_attitude",
             "tello_get_drone_info",
             "tello_is_online",
-            "robot_submit_bid",
-            "robot_execute_task",
-            "robot_get_pricing",
+            *MARKETPLACE_TOOL_NAMES,
         ]
 
     def register_tools(self, mcp):

@@ -1,9 +1,12 @@
 import asyncio
+import logging
 import uuid
 from dataclasses import asdict
 
 from core.plugin import RobotPlugin
 from auction.models import AuctionResult, Bid, TaskSpec
+
+logger = logging.getLogger(__name__)
 
 
 class AuctionEngine:
@@ -26,25 +29,26 @@ class AuctionEngine:
                 return None
             try:
                 result = await plugin.bid(task_dict)
-            except Exception:
+                if result is None:
+                    return None
+                price = float(result.get("price", 0))
+                if price > task.budget_ceiling:
+                    return None
+                return Bid(
+                    robot_name=name,
+                    willing_to_bid=True,
+                    price=price,
+                    currency=result.get("currency", "usd"),
+                    sla_commitment_seconds=int(result.get("sla_commitment_seconds", 0)),
+                    # fakerover uses "ai_confidence"; plan target field is "confidence"
+                    confidence=float(result.get("confidence", result.get("ai_confidence", 0.5))),
+                    capabilities_offered=result.get("capabilities_offered", []),
+                    notes=result.get("notes", ""),
+                    reason="",
+                )
+            except Exception as exc:
+                logger.warning("Plugin %r bid() failed: %s", name, exc)
                 return None
-            if result is None:
-                return None
-            price = float(result.get("price", 0))
-            if price > task.budget_ceiling:
-                return None
-            return Bid(
-                robot_name=name,
-                willing_to_bid=True,
-                price=price,
-                currency=result.get("currency", "usd"),
-                sla_commitment_seconds=int(result.get("sla_commitment_seconds", 0)),
-                # fakerover uses "ai_confidence"; plan target field is "confidence"
-                confidence=float(result.get("confidence", result.get("ai_confidence", 0.5))),
-                capabilities_offered=result.get("capabilities_offered", []),
-                notes=result.get("notes", ""),
-                reason="",
-            )
 
         results = await asyncio.gather(
             *(_bid_one(name, plugin) for name, plugin in self.plugins.items()),
