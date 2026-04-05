@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.0 — 2026-04-05
+
+### Added
+
+- **Multi-chain support (Stage 6)** — EVM chain selection for all registration and discovery operations. Supports `eth-sepolia`, `eth-mainnet`, `base-sepolia`, and `base-mainnet`.
+  - New `src/core/chains.py` — single source of truth for chain IDs and default RPC URLs. `get_chain()` resolves via explicit arg → `CHAIN` env var → `eth-sepolia` default.
+  - `--chain` flag on all four CLI scripts (`register.py`, `discover.py`, `update_agent.py`, `fix_metadata.py`).
+  - `discover_robot_agents` MCP tool gains a `chain` parameter so LLMs can query across chains.
+  - `RPC_URL` in `.env` still overrides the chain's default RPC for power users.
+  - No breaking change — all commands default to `eth-sepolia` as before.
+
+---
+
 ## 0.0.1 — 2026-02-25
 
 Initial release of the modular MCP framework for multi-robot fleet control and on-chain discovery via ERC-8004.

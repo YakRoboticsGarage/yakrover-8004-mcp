@@ -6,8 +6,10 @@ from the plugin, re-uploads to IPFS, and submits the update transaction.
 Usage:
     uv run python scripts/update_agent.py tumbller 11155111:989
     uv run python scripts/update_agent.py tello 11155111:990
+    uv run python scripts/update_agent.py tumbller 8453:42 --chain base-mainnet
 
-Requires in .env: RPC_URL, SIGNER_PVT_KEY, PINATA_JWT, NGROK_DOMAIN
+Requires in .env: SIGNER_PVT_KEY, PINATA_JWT, NGROK_DOMAIN
+Optional in .env: RPC_URL (overrides the selected chain's default public RPC)
 """
 
 import argparse
@@ -17,11 +19,21 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from robots import discover_plugins
+from core.chains import CHAIN_NAMES, DEFAULT_CHAIN
 from core.registration import update_robot
 
 parser = argparse.ArgumentParser(description="Update an existing on-chain robot agent")
 parser.add_argument("robot", help="Robot plugin name (e.g. tumbller, tello, fakerover)")
 parser.add_argument("agent_id", help="On-chain agent ID (e.g. 11155111:989)")
+parser.add_argument(
+    "--chain",
+    choices=CHAIN_NAMES,
+    default=None,
+    metavar="CHAIN",
+    help=f"EVM chain the agent lives on (e.g. base-mainnet). "
+         f"Defaults to CHAIN env var or {DEFAULT_CHAIN}. "
+         f"Choices: {', '.join(CHAIN_NAMES)}",
+)
 args = parser.parse_args()
 
 plugins = discover_plugins()
@@ -30,4 +42,4 @@ if args.robot not in plugins:
     sys.exit(1)
 
 plugin = plugins[args.robot]()
-update_robot(plugin, args.agent_id)
+update_robot(plugin, args.agent_id, chain=args.chain)
