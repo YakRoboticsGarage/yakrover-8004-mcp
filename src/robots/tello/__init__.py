@@ -17,7 +17,7 @@ class TelloPlugin(RobotPlugin):
                 min_price_cents=100,
                 rate_per_minute_cents=50,
                 currency="usd",
-                accepted_task_types=["camera", "visual_inspection"],
+                accepted_task_types=["camera"],
                 max_duration_secs=300,
                 max_concurrent_tasks=1,
                 requires_approval=True,

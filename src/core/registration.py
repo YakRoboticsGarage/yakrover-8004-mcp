@@ -74,7 +74,9 @@ def _build_metadata(meta) -> dict:
     }
     terms = meta.bidding_terms
     if terms is not None:
-        categories = ",".join(_category_map.get(t, t) for t in terms.accepted_task_types)
+        # dict.fromkeys preserves order and de-duplicates in case a plugin
+        # mixes internal and marketplace vocabulary in accepted_task_types.
+        categories = ",".join(dict.fromkeys(_category_map.get(t, t) for t in terms.accepted_task_types))
         # "usd" → "usd,usdc"; "usdc" → "usdc" (already the preferred currency)
         accepted_currencies = terms.currency if terms.currency == "usdc" else f"{terms.currency},usdc"
         metadata.update({

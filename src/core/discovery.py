@@ -47,12 +47,16 @@ def _parse_bidding_terms(metadata: dict) -> dict | None:
     ``task_categories`` uses marketplace vocabulary (``env_sensing``,
     ``visual_inspection``).
     """
-    if not metadata.get("min_bid_price"):
+    if "min_bid_price" not in metadata:
+        return None
+    try:
+        min_bid_price = int(metadata["min_bid_price"])
+    except (TypeError, ValueError):
         return None
     currencies_raw = metadata.get("accepted_currencies", "usd")
     categories_raw = metadata.get("task_categories", "")
     return {
-        "min_bid_price": int(metadata["min_bid_price"]),
+        "min_bid_price": min_bid_price,
         "accepted_currencies": [c.strip() for c in currencies_raw.split(",") if c.strip()],
         "task_categories": [t.strip() for t in categories_raw.split(",") if t.strip()],
     }

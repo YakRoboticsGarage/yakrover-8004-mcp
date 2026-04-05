@@ -17,7 +17,7 @@ class FakeRoverPlugin(RobotPlugin):
                 min_price_cents=50,
                 rate_per_minute_cents=10,
                 currency="usd",
-                accepted_task_types=["sensor_reading", "env_sensing"],
+                accepted_task_types=["sensor_reading"],
                 max_duration_secs=180,
                 max_concurrent_tasks=1,
                 requires_approval=True,
