@@ -44,6 +44,7 @@ yakrover-8004-mcp/
 │   │   ├── tunnel.py   # ngrok tunnel
 │   │   ├── discovery.py # Robot discovery + MCP tool (ERC-8004 on-chain queries)
 │   │   ├── registration.py # Generic ERC-8004 register/update/fix
+│   │   ├── chains.py   # Multi-chain config map (chain ID + default RPC per network)
 │   │   ├── wallet.py   # Wallet generation
 │   │   └── plugin.py   # RobotPlugin base class + RobotMetadata dataclass
 │   └── robots/         # One sub-package per robot type
@@ -102,26 +103,48 @@ uv run python scripts/serve.py --robots fakerover                # MCP gateway f
 
 # Register a robot on-chain
 uv run python scripts/register.py tumbller
+uv run python scripts/register.py tumbller --chain base-mainnet  # register on a specific chain
 
 # Generate wallet
 uv run python scripts/generate_wallet.py
 
 # Run discovery CLI
 uv run python scripts/discover.py
+uv run python scripts/discover.py --provider yakrover --chain base-sepolia  # discover on a specific chain
+
+# Update agent on-chain
+uv run python scripts/update_agent.py tumbller 11155111:989
+uv run python scripts/update_agent.py tumbller 8453:989 --chain base-mainnet
+
+# Fix flat on-chain metadata keys (not bidding terms — use update_agent.py for those)
+uv run python scripts/fix_metadata.py tumbller 989
+uv run python scripts/fix_metadata.py tumbller 989 --chain base-mainnet
 ```
 
 ## Environment Variables
 
 Required in `.env`:
-- `RPC_URL` — Ethereum Sepolia RPC endpoint
-- `SIGNER_PVT_KEY` — Wallet private key for on-chain transactions
+- `RPC_URL` — RPC endpoint override for the default chain only. When `--chain` is explicitly passed, the chain's own bundled public RPC is used instead.
+- `SIGNER_PVT_KEY` — Wallet private key for on-chain transactions (same key works on all EVM chains)
 - `PINATA_JWT` — Pinata API token for IPFS uploads
 - `NGROK_AUTHTOKEN` — ngrok auth token (required for `--ngrok`)
 - `NGROK_DOMAIN` — ngrok static domain
 - `MCP_BEARER_TOKEN` — (optional) Bearer token for MCP auth
+- `CHAIN` — (optional) Default chain for all CLI commands; overridden by `--chain` flag (e.g. `base-mainnet`, `eth-sepolia`)
 - `TUMBLLER_URL` — (optional) Tumbller robot address (default: `http://finland-tumbller-01.local`)
 - `TELLO_HOST` — (optional) Tello drone IP (default: `192.168.10.1`)
 - `FAKEROVER_URL` — (optional) Fake rover simulator address (default: `http://localhost:8080`)
+
+### Supported Chains
+
+| Name | Chain ID | Default RPC |
+|------|----------|-------------|
+| `eth-sepolia` | `11155111` | `https://ethereum-sepolia-rpc.publicnode.com` |
+| `eth-mainnet` | `1` | `https://ethereum-rpc.publicnode.com` |
+| `base-sepolia` | `84532` | `https://sepolia.base.org` |
+| `base-mainnet` | `8453` | `https://mainnet.base.org` |
+
+Default is `eth-sepolia`. All CLI scripts accept `--chain <name>`; if omitted, falls back to the `CHAIN` env var, then `eth-sepolia`. `RPC_URL` overrides the default RPC for whichever chain is active. The `discover_robot_agents` MCP tool also accepts a `chain` parameter so LLMs can search any chain.
 
 ## Development Guidelines
 

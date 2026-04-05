@@ -28,10 +28,11 @@ def _get_sdk(chain: str | None = None) -> SDK:
     Args:
         chain: Chain name (e.g. ``"base-mainnet"``). Defaults to the
                ``CHAIN`` env var or ``eth-sepolia``. ``RPC_URL`` in ``.env``
-               always overrides the chain's default RPC.
+               overrides the RPC only when no explicit chain is given.
     """
     chain_cfg = get_chain(chain)
-    rpc_url = os.getenv("RPC_URL") or chain_cfg["rpc"]
+    # RPC_URL only overrides the RPC when no explicit chain was requested.
+    rpc_url = (os.getenv("RPC_URL") if chain is None else None) or chain_cfg["rpc"]
     return SDK(
         chainId=chain_cfg["chain_id"],
         rpcUrl=rpc_url,

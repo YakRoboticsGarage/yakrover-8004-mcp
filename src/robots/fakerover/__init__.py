@@ -4,7 +4,7 @@ from core.plugin import RobotPlugin, RobotMetadata
 class FakeRoverPlugin(RobotPlugin):
     def metadata(self) -> RobotMetadata:
         return RobotMetadata(
-            name="Fake Rover",
+            name="FakeRover-Finland-01",
             description="A simulated differential-drive rover for development and testing.",
             robot_type="differential_drive",
             url_prefix="fakerover",

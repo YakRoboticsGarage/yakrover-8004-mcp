@@ -23,7 +23,10 @@ def _make_sdk(*, ipfs: bool = False, chain: str | None = None) -> SDK:
                bundled public RPC is used automatically.
     """
     chain_cfg = get_chain(chain)
-    rpc_url = os.getenv("RPC_URL") or chain_cfg["rpc"]
+    # RPC_URL only overrides the RPC when no explicit chain was requested.
+    # When --chain is specified, use that chain's own default RPC so the
+    # transaction lands on the correct network.
+    rpc_url = (os.getenv("RPC_URL") if chain is None else None) or chain_cfg["rpc"]
     kwargs = dict(
         chainId=chain_cfg["chain_id"],
         rpcUrl=rpc_url,
