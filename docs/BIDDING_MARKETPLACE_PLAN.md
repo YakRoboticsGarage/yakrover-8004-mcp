@@ -193,8 +193,21 @@ async def robot_execute_task(
     task_id: str,
     task_description: str,
     parameters: dict,
+    payment_source: str = "fleet",  # "marketplace" | "fleet"
 ) -> dict:
-    """Execute an accepted task. Returns delivery_data for IPFS upload."""
+    """Execute an accepted task. Returns delivery_data for IPFS upload.
+
+    payment_source="marketplace" means the external marketplace has already
+    handled payment (Stripe or USDC). The robot just executes and returns
+    delivery_data — no payment logic should run inside execute().
+
+    payment_source="fleet" means this call came from the internal fleet
+    server (fleet_execute_task). Payment (if any) is handled by the fleet
+    engine's Stripe flow, not by this tool.
+
+    Either way, execute() never initiates payment. Payment path is
+    determined by who calls this tool, not by the robot.
+    """
     return await plugin.execute(task_id, task_description, parameters)
 ```
 
@@ -338,6 +351,33 @@ if meta.bidding_terms:
     })
 agent.setMetadata(metadata)
 ```
+
+**Exact agent card JSON structure stored on IPFS:**
+
+```json
+{
+  "name": "Tumbller Self-Balancing Robot",
+  "services": [
+    {
+      "name": "MCP",
+      "endpoint": "https://<ngrok-domain>/tumbller/mcp",
+      "mcpTools": ["tumbller_move", "robot_submit_bid", "robot_execute_task", "robot_get_pricing"],
+      "fleetEndpoint": "https://<ngrok-domain>/fleet/mcp"
+    }
+  ],
+  "metadata": {
+    "category": "robot",
+    "robot_type": "tumbller",
+    "fleet_provider": "yakrover",
+    "fleet_domain": "yakroboticsgarage.com",
+    "min_bid_price": "50",
+    "accepted_currencies": "usd,usdc",
+    "task_categories": "env_sensing"
+  }
+}
+```
+
+Bidding terms land as **flat string values** under the `metadata` key — not a nested `bidding_terms` object. The subgraph and demo page should read `metadata.min_bid_price`, `metadata.accepted_currencies`, and `metadata.task_categories` directly. `discovery.py` parses these into a structured `bidding_terms` object on read (Stage 3c), but the stored form is always flat strings.
 
 **Why IPFS, not on-chain KV store:**
 - Cheaper to update — changing any number of bidding fields is always 1 tx (update CID), vs. 1 tx per key on-chain
