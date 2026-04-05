@@ -84,8 +84,15 @@ def register_auction_tools(mcp: FastMCP, engine: AuctionEngine) -> None:
     async def fleet_execute_task(auction_id: str) -> dict:
         """Execute the accepted task on the winning robot.
 
-        The auction must be in 'accepted' status. The robot is marked busy
-        for the duration and the result is stored in the auction record.
+        The auction must be in 'accepted' status (USDC / no-payment path) or
+        'paid' status (Stripe payment confirmed). The robot is marked busy for
+        the duration and the result is stored in the auction record.
+
+        For Mode A (requires_approval=True, the default): call this tool after
+        confirming payment to approve and trigger execution.
+        For Mode B (requires_approval=False): execution is triggered automatically
+        after Stripe payment confirmation — calling this tool is not required.
+
         Returns the delivery_data dict from the robot.
         """
         return await engine.execute(auction_id)
