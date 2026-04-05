@@ -145,7 +145,7 @@ Implementation of the robot-side bidding marketplace. See [BIDDING_MARKETPLACE_P
 
 The external marketplace (`yakrover-marketplace`) calls robot MCP tools directly. This repo implements the robot side: bid evaluation, task execution, on-chain bidding terms, and payment receipt.
 
-**Stage 1 complete.** Next: Stage 2b (align FakeRover `bid()`/`execute()` to the new schema for end-to-end testing without hardware), then 2a/2c, 3, 5b, 4, 5, 5c.
+**Stages 1, 2, and 3 complete.** Next: Stage 5b (standardise `execute()` delivery format across all plugins), then Stage 4 (Stripe payment integration), Stage 5 (approval flow), Stage 5c (feedback tool).
 
 ---
 
@@ -186,17 +186,17 @@ Shared helper that registers marketplace tools on each robot's MCP server. Exter
 
 ### Stage 2: Plugin Bid Implementations
 
-- [ ] **2a** — `src/robots/tumbller/__init__.py` — override `bid()` (env_sensing / sensor_reading, liveness check) and `execute()` (temperature/humidity reading, delivery_data format)
-- [ ] **2b** — `src/robots/fakerover/__init__.py` — align existing `bid()` to Bid schema (price float, `ai_confidence` → `confidence`, `capability_metadata` → `capabilities_offered` flat list, add `currency` + `notes`); add `execute()` and `bidding_terms` to `metadata()`
-- [ ] **2c** — `src/robots/tello/__init__.py` — override `bid()` (camera tasks) and `execute()` (photo/video, delivery_data format)
+- [x] **2a** — `src/robots/tumbller/__init__.py` — override `bid()` (env_sensing / sensor_reading, liveness check) and `execute()` (temperature/humidity reading, delivery_data format)
+- [x] **2b** — `src/robots/fakerover/__init__.py` — align existing `bid()` to Bid schema (price float, `ai_confidence` → `confidence`, `capability_metadata` → `capabilities_offered` flat list, add `currency` + `notes`); add `execute()` and `bidding_terms` to `metadata()`
+- [x] **2c** — `src/robots/tello/__init__.py` — override `bid()` (camera tasks) and `execute()` (photo/video, delivery_data format)
 
 ---
 
 ### Stage 3: Bidding Terms in On-Chain Metadata
 
-- [ ] Add `BiddingTerms` dataclass and `bidding_terms` field to `RobotMetadata` in `src/core/plugin.py`
-- [ ] Update `registration.py` — serialize bidding terms as flat keys (`min_bid_price`, `accepted_currencies`, `task_categories`) into the IPFS agent card via `agent.setMetadata()`
-- [ ] Update `discovery.py` — parse bidding terms from fetched agent card JSON and include in discovery result
+- [x] Add `BiddingTerms` dataclass and `bidding_terms` field to `RobotMetadata` in `src/core/plugin.py`
+- [x] Update `registration.py` — serialize bidding terms as flat keys (`min_bid_price`, `accepted_currencies`, `task_categories`) into the IPFS agent card via `_build_metadata()` helper in both `register_robot()` and `update_robot()`
+- [x] Update `discovery.py` — parse bidding terms from fetched agent card JSON via `_parse_bidding_terms()` and include in discovery result as `bidding_terms` key
 
 ---
 

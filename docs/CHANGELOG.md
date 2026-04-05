@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 — 2026-04-05
+
+### Added
+
+Completes **Stage 2** (plugin bid implementations) and **Stage 3** (bidding terms in on-chain metadata).
+
+- **`BiddingTerms` dataclass** (`src/core/plugin.py`) — `min_price_cents`, `rate_per_minute_cents`, `currency`, `accepted_task_types`, `max_duration_secs`, `max_concurrent_tasks`, `requires_approval`. Added as optional `bidding_terms` field on `RobotMetadata`; `None` means the robot does not participate in the marketplace.
+- **Stage 2b — FakeRover** (`src/robots/fakerover/__init__.py`): aligned `bid()` to the `Bid` schema (`price` float, `ai_confidence` → `confidence`, `capability_metadata` → `capabilities_offered` flat list, added `currency` and `notes`); added task-category filter (`env_sensing` / `sensor_reading`); added budget check; implemented `execute()` returning `delivery_data` with AHT20 sensor readings; added `bidding_terms` ($0.50 min, $0.10/min, sensor_reading tasks).
+- **Stage 2a — Tumbller** (`src/robots/tumbller/__init__.py`): `bid()` filters on `env_sensing` / `sensor_reading`, checks capability subset (`temperature`, `humidity`), enforces budget floor, does a liveness `/info` call; `execute()` reads `/sensor/ht` and returns `delivery_data` with SHT3x readings; `bidding_terms` set ($0.50 min, $0.10/min, sensor_reading tasks, 60 s max).
+- **Stage 2c — Tello** (`src/robots/tello/__init__.py`): `bid()` filters on `visual_inspection` / `camera`, enforces budget floor, does a liveness `is_online()` call; `execute()` takes off, captures in-flight attitude + status telemetry, lands, and returns `delivery_data`; `bidding_terms` set ($1.00 min, $0.50/min, camera tasks, 300 s max).
+- **Stage 3b — `registration.py`**: new `_build_metadata()` helper serialises `BiddingTerms` as flat string keys (`min_bid_price`, `accepted_currencies`, `task_categories`) into the IPFS agent card alongside the four base keys. Internal task type names (`sensor_reading`, `camera`) are translated to marketplace vocabulary (`env_sensing`, `visual_inspection`) on write. Both `register_robot()` and `update_robot()` now call `_build_metadata()`.
+- **Stage 3c — `discovery.py`**: new `_parse_bidding_terms()` helper reads the flat metadata keys from the fetched agent card and returns a structured dict. `_fetch_ipfs_mcp_meta()` now includes `biddingTerms` in its result when present. `discover_robots()` surfaces `bidding_terms` on each robot entry. `discover_robot_agents` MCP tool docstring updated.
+
+---
+
 ## 0.2.0 — 2026-04-05
 
 ### Added

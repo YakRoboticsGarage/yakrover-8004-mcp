@@ -50,6 +50,41 @@ def _fleet_url() -> str:
     return f"https://{ngrok_domain}/fleet/mcp"
 
 
+def _build_metadata(meta) -> dict:
+    """Build the flat metadata dict stored in the IPFS agent card.
+
+    Always includes the four base keys. When the plugin opts into the
+    marketplace (``meta.bidding_terms is not None``), three additional
+    bidding-terms keys are appended as flat strings so any client can
+    read them without fetching the full dataclass.
+
+    ``task_categories`` uses the marketplace vocabulary (``env_sensing``,
+    ``visual_inspection``) — internal names (``sensor_reading``,
+    ``camera``) are translated on write, parsed back on discovery read.
+    """
+    _category_map = {
+        "sensor_reading": "env_sensing",
+        "camera": "visual_inspection",
+    }
+    metadata: dict = {
+        "category": "robot",
+        "robot_type": meta.robot_type,
+        "fleet_provider": meta.fleet_provider,
+        "fleet_domain": meta.fleet_domain,
+    }
+    terms = meta.bidding_terms
+    if terms is not None:
+        categories = ",".join(_category_map.get(t, t) for t in terms.accepted_task_types)
+        # "usd" → "usd,usdc"; "usdc" → "usdc" (already the preferred currency)
+        accepted_currencies = terms.currency if terms.currency == "usdc" else f"{terms.currency},usdc"
+        metadata.update({
+            "min_bid_price": str(terms.min_price_cents),
+            "accepted_currencies": accepted_currencies,
+            "task_categories": categories,
+        })
+    return metadata
+
+
 def register_robot(plugin: RobotPlugin, chain: str | None = None) -> None:
     """Register a robot plugin on ERC-8004.
 
@@ -86,12 +121,7 @@ def register_robot(plugin: RobotPlugin, chain: str | None = None) -> None:
     agent.setActive(True)
     agent.setX402Support(False)
 
-    agent.setMetadata({
-        "category": "robot",
-        "robot_type": meta.robot_type,
-        "fleet_provider": meta.fleet_provider,
-        "fleet_domain": meta.fleet_domain,
-    })
+    agent.setMetadata(_build_metadata(meta))
 
     fleet_endpoint = _fleet_url()
     chain_cfg = get_chain(chain)
@@ -145,12 +175,7 @@ def update_robot(plugin: RobotPlugin, agent_id: str, chain: str | None = None) -
     mcp_ep.meta["mcpTools"] = plugin.tool_names()
     mcp_ep.meta["fleetEndpoint"] = _fleet_url()
 
-    agent.setMetadata({
-        "category": "robot",
-        "robot_type": meta.robot_type,
-        "fleet_provider": meta.fleet_provider,
-        "fleet_domain": meta.fleet_domain,
-    })
+    agent.setMetadata(_build_metadata(meta))
 
     print(f"\n  Updated MCP endpoint:   {mcp_endpoint}")
     print(f"  Updated fleet endpoint: {_fleet_url()}")

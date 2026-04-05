@@ -1,5 +1,7 @@
+import time
+
 from core.marketplace_tools import MARKETPLACE_TOOL_NAMES
-from core.plugin import RobotPlugin, RobotMetadata
+from core.plugin import BiddingTerms, RobotPlugin, RobotMetadata
 
 
 class TelloPlugin(RobotPlugin):
@@ -11,6 +13,15 @@ class TelloPlugin(RobotPlugin):
             url_prefix="tello",
             fleet_provider="yakrover",
             fleet_domain="yakrover.com/finland",
+            bidding_terms=BiddingTerms(
+                min_price_cents=100,
+                rate_per_minute_cents=50,
+                currency="usd",
+                accepted_task_types=["camera", "visual_inspection"],
+                max_duration_secs=300,
+                max_concurrent_tasks=1,
+                requires_approval=True,
+            ),
         )
 
     def tool_names(self) -> list[str]:
@@ -31,4 +42,96 @@ class TelloPlugin(RobotPlugin):
         from .client import TelloClient
         from .tools import register
 
-        register(mcp, TelloClient())
+        self.client = TelloClient()
+        register(mcp, self.client)
+
+    async def bid(self, task_spec: dict) -> dict | None:
+        """Generate a bid for visual_inspection (camera) tasks."""
+        # Category filter — Tello handles aerial camera tasks only
+        if task_spec.get("task_category") not in ("visual_inspection", "camera"):
+            return None
+
+        # Budget check
+        terms = self.metadata().bidding_terms
+        min_price = terms.min_price_cents / 100
+        if task_spec.get("budget_ceiling", 0) < min_price:
+            return None
+
+        # Liveness check
+        client = getattr(self, "client", None)
+        if client is None:
+            from .client import TelloClient
+            client = TelloClient()
+        liveness = await client.is_online()
+        if not liveness.get("online"):
+            return None
+
+        return {
+            "price": min_price,
+            "currency": "usd",
+            "sla_commitment_seconds": 120,
+            "confidence": 0.90,
+            "capabilities_offered": ["aerial_photo", "video_inspection", "360_scan"],
+            "notes": "DJI Tello, 720p camera. Requires 30 cm clearance for takeoff.",
+        }
+
+    async def execute(self, task_id: str, task_description: str, parameters: dict) -> dict:
+        """Perform a brief aerial inspection and return flight telemetry as delivery_data."""
+        client = getattr(self, "client", None)
+        if client is None:
+            from .client import TelloClient
+            client = TelloClient()
+
+        start = time.monotonic()
+        partial_data: dict = {}
+
+        try:
+            # Pre-flight status
+            pre_status = await client.get_status()
+            partial_data["pre_flight_status"] = pre_status
+
+            # Take off and hover for inspection
+            await client.takeoff()
+
+            # Capture in-flight telemetry for the inspection report
+            attitude = await client.get_attitude()
+            in_status = await client.get_status()
+            partial_data["in_flight_attitude"] = attitude
+            partial_data["in_flight_status"] = in_status
+
+            # Land
+            await client.land()
+
+        except Exception as e:
+            # Attempt safe landing before reporting failure
+            try:
+                await client.land()
+            except Exception:
+                pass
+            return {
+                "success": False,
+                "error": str(e),
+                "partial_data": partial_data,
+            }
+
+        duration = round(time.monotonic() - start, 2)
+        height = in_status.get("height_cm")
+        battery = in_status.get("battery")
+
+        return {
+            "success": True,
+            "delivery_data": {
+                "readings": [
+                    {"type": "aerial_altitude", "value": height, "unit": "cm"},
+                    {"type": "battery", "value": battery, "unit": "percent"},
+                ],
+                "summary": (
+                    f"Visual inspection complete. "
+                    f"Hover altitude: {height} cm, battery remaining: {battery}%."
+                ),
+                "robot_id": "tello",
+                "robot_name": self.metadata().name,
+                "duration_seconds": duration,
+                "telemetry": partial_data,
+            },
+        }

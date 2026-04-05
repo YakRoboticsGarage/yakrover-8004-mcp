@@ -1,6 +1,23 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fastmcp import FastMCP
+
+
+@dataclass
+class BiddingTerms:
+    """Pricing and task-acceptance rules for marketplace participation.
+
+    Set on a plugin to opt it into the bidding marketplace. Leave ``bidding_terms``
+    as ``None`` on ``RobotMetadata`` to opt out entirely.
+    """
+
+    min_price_cents: int = 50               # Floor price; 50 = $0.50
+    rate_per_minute_cents: int | None = 10  # Per-minute rate; None = flat price only
+    currency: str = "usd"
+    accepted_task_types: list[str] = field(default_factory=list)
+    max_duration_secs: int = 300
+    max_concurrent_tasks: int = 1
+    requires_approval: bool = True          # True = human must call fleet_execute_task
 
 
 @dataclass
@@ -14,6 +31,7 @@ class RobotMetadata:
     fleet_provider: str = ""
     fleet_domain: str = ""
     image: str = ""
+    bidding_terms: BiddingTerms | None = None  # None = not participating in marketplace
 
 
 class RobotPlugin(ABC):

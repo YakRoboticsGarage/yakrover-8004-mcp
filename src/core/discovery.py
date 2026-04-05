@@ -39,11 +39,30 @@ def _get_sdk(chain: str | None = None) -> SDK:
     )
 
 
+def _parse_bidding_terms(metadata: dict) -> dict | None:
+    """Parse bidding terms from the flat metadata dict in an IPFS agent card.
+
+    Returns a structured dict if ``min_bid_price`` is present, else ``None``.
+    ``min_bid_price`` is kept in cents (integer) to match ``BiddingTerms``.
+    ``task_categories`` uses marketplace vocabulary (``env_sensing``,
+    ``visual_inspection``).
+    """
+    if not metadata.get("min_bid_price"):
+        return None
+    currencies_raw = metadata.get("accepted_currencies", "usd")
+    categories_raw = metadata.get("task_categories", "")
+    return {
+        "min_bid_price": int(metadata["min_bid_price"]),
+        "accepted_currencies": [c.strip() for c in currencies_raw.split(",") if c.strip()],
+        "task_categories": [t.strip() for t in categories_raw.split(",") if t.strip()],
+    }
+
+
 def _fetch_ipfs_mcp_meta(sdk: SDK, agent_id_int: int) -> dict:
     """Fetch MCP service metadata from IPFS (bypasses subgraph lag).
 
-    Returns a dict with ``mcpTools`` and ``fleetEndpoint`` keys (either
-    may be absent if not stored).
+    Returns a dict with ``mcpTools``, ``fleetEndpoint``, and optionally
+    ``biddingTerms`` keys (any may be absent if not stored).
     """
     try:
         uri = sdk.identity_registry.functions.tokenURI(agent_id_int).call()
@@ -53,13 +72,17 @@ def _fetch_ipfs_mcp_meta(sdk: SDK, agent_id_int: int) -> dict:
         resp = requests.get(f"{IPFS_GATEWAY}{cid}", timeout=10)
         resp.raise_for_status()
         data = resp.json()
+        result: dict = {}
         for svc in data.get("services", []):
             if svc.get("name") == "MCP":
-                return {
-                    "mcpEndpoint": svc.get("endpoint"),
-                    "mcpTools": svc.get("mcpTools", []),
-                    "fleetEndpoint": svc.get("fleetEndpoint"),
-                }
+                result["mcpEndpoint"] = svc.get("endpoint")
+                result["mcpTools"] = svc.get("mcpTools", [])
+                result["fleetEndpoint"] = svc.get("fleetEndpoint")
+                break
+        bidding_terms = _parse_bidding_terms(data.get("metadata", {}))
+        if bidding_terms is not None:
+            result["biddingTerms"] = bidding_terms
+        return result
     except Exception:
         pass
     return {}
@@ -117,7 +140,7 @@ def discover_robots(
             tools = ipfs_meta.get("mcpTools", [])
         fleet_endpoint = ipfs_meta.get("fleetEndpoint")
 
-        robots.append({
+        entry: dict = {
             "agent_id": agent_id_str,
             "name": name,
             "robot_type": rtype_str,
@@ -126,7 +149,10 @@ def discover_robots(
             "mcp_endpoint": ipfs_meta.get("mcpEndpoint"),
             "mcp_tools": tools,
             "fleet_endpoint": fleet_endpoint,
-        })
+        }
+        if "biddingTerms" in ipfs_meta:
+            entry["bidding_terms"] = ipfs_meta["biddingTerms"]
+        robots.append(entry)
 
     return robots
 
@@ -181,6 +207,9 @@ def register_discovery_tools(
                               or null if not stored
             - local_endpoint: MCP endpoint path on this gateway
                               (e.g. "/tumbller/mcp"), or null if not local
+            - bidding_terms: Marketplace pricing dict (min_bid_price in cents,
+                             accepted_currencies, task_categories), or absent
+                             if the robot is not in the marketplace
 
             On invalid chain: returns {"error": "...", "valid_chains": [...]}
         """
