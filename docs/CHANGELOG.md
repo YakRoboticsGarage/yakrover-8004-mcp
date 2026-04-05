@@ -4,15 +4,17 @@
 
 ### Added
 
-- **Auction engine core (Stage 1a/1b)** — `src/auction/` package with data models and engine.
-  - `src/auction/models.py` — `TaskSpec`, `Bid`, and `AuctionResult` dataclasses. `AuctionResult` tracks full lifecycle state (`"bidding" → "accepted" → "executing" → "completed"/"failed"`) via `auction_id`.
-  - `src/auction/engine.py` — `AuctionEngine` fans out `plugin.bid()` calls in parallel via `asyncio.gather`, filters bids that exceed `budget_ceiling`, tracks busy robots in `self._busy` to prevent double-booking, and captures execution errors into `AuctionResult` rather than crashing.
-- **Robot-side marketplace tools (Stage 1d)** — `src/core/marketplace_tools.py` registers `robot_submit_bid`, `robot_execute_task`, and `robot_get_pricing` on every robot's MCP server automatically via `create_robot_server()`. No per-plugin code required.
-  - `robot_submit_bid` — delegates to `plugin.bid()`, normalises response to the `Bid` schema.
-  - `robot_execute_task` — delegates to `plugin.execute()`. `payment_source` param documents call origin but does not affect execution logic.
-  - `robot_get_pricing` — reads `BiddingTerms` from plugin metadata via `getattr` so it returns safe defaults now and picks up real values when Stage 3 adds `BiddingTerms` to `RobotMetadata`.
-- **`execute()` stub on `RobotPlugin`** — default implementation returns `{"success": False, "error": "..."}` so the engine marks auctions as `"failed"` rather than raising `AttributeError` on unimplemented plugins.
-- **`MARKETPLACE_TOOL_NAMES` constant** — exported from `marketplace_tools.py`; `tool_names()` on all three plugins (fakerover, tumbller, tello) updated to include the three marketplace tool names for on-chain registration.
+Completes **Stage 1** of the bidding marketplace. The external marketplace can now call `robot_submit_bid` / `robot_execute_task` on any robot's MCP endpoint, and LLM clients on `/fleet/mcp` can run the full bid → accept → execute flow via the fleet tools.
+
+- **Stage 1a — Data models** (`src/auction/models.py`): `TaskSpec`, `Bid`, and `AuctionResult` dataclasses. `AuctionResult` carries an `auction_id` and tracks lifecycle state through `"bidding" → "accepted" → "executing" → "completed"/"failed"`.
+- **Stage 1b — Auction engine** (`src/auction/engine.py`): `AuctionEngine` fans out `plugin.bid()` calls across all plugins in parallel via `asyncio.gather`, filters bids exceeding `budget_ceiling`, guards against double-booking with a `_busy` set, and captures execution errors into `AuctionResult` rather than crashing. Explicit `None` guard on `winning_bid` before dereferencing in `execute()`.
+- **Stage 1c — Fleet MCP tools** (`src/auction/mcp_tools.py`): five LLM-facing tools on `/fleet/mcp` — `fleet_request_bids`, `fleet_list_auctions`, `fleet_accept_bid`, `fleet_execute_task`, `fleet_get_auction_status`. `AuctionEngine` is instantiated in `create_gateway()` and wired into the fleet server automatically.
+- **Stage 1d — Robot-side marketplace tools** (`src/core/marketplace_tools.py`): shared `register(mcp, plugin)` adds `robot_submit_bid`, `robot_execute_task`, and `robot_get_pricing` to every robot's MCP server via `create_robot_server()` — no per-plugin code required.
+  - `robot_submit_bid` — delegates to `plugin.bid()`, normalises response to the `Bid` schema, and enforces the `budget_ceiling` filter before returning an affirmative bid.
+  - `robot_execute_task` — delegates to `plugin.execute()`; `payment_source` param documents call origin but does not affect execution.
+  - `robot_get_pricing` — derives `accepted_currencies` from `BiddingTerms.currency` when present; uses explicit `is not None` for `rate_per_minute_cents` so a zero rate and a flat-price-only (`None`) are distinguishable; returns safe defaults until Stage 3 adds `BiddingTerms` to `RobotMetadata`.
+- **`RobotPlugin.execute()` stub** — returns `{"success": False, "error": "..."}` so the engine marks auctions `"failed"` gracefully on unimplemented plugins.
+- **All three plugins updated** — `tool_names()` on fakerover, tumbller, and tello include the three marketplace tool names for on-chain registration.
 
 ---
 
