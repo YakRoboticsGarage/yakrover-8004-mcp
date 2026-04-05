@@ -27,7 +27,7 @@ def get_chain(name: str | None = None) -> dict:
               environment default.
 
     Returns:
-        Dict with ``chain_id`` (int) and ``rpc`` (str) keys.
+        Dict with ``name`` (str), ``chain_id`` (int), and ``rpc`` (str) keys.
 
     Raises:
         KeyError: If ``name`` is not a recognised chain.

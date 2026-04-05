@@ -13,7 +13,7 @@ from agent0_sdk import SDK
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 
-from core.chains import get_chain
+from core.chains import CHAIN_NAMES, get_chain
 
 load_dotenv()
 
@@ -78,8 +78,9 @@ def discover_robots(
                ``CHAIN`` env var or ``eth-sepolia``.
 
     Returns:
-        List of dicts with agent_id, name, robot_type, fleet_provider,
-        fleet_domain, and mcp_tools for each matching robot.
+        List of dicts, one per matching robot, with keys: ``agent_id``,
+        ``name``, ``robot_type``, ``fleet_provider``, ``fleet_domain``,
+        ``mcp_endpoint``, ``mcp_tools``, and ``fleet_endpoint``.
     """
     sdk = _get_sdk(chain)
     results = sdk.searchAgents(hasMetadataKey="category")
@@ -161,9 +162,10 @@ def register_discovery_tools(
                         "quadrotor"). Pass None to return all types.
             fleet_provider: Filter by fleet operator (e.g. "yakrover").
                            Pass None to return all providers.
-            chain: EVM chain to search (e.g. "eth-sepolia", "base-mainnet",
-                   "base-sepolia", "eth-mainnet"). Defaults to the gateway's
-                   configured chain (CHAIN env var) or eth-sepolia.
+            chain: EVM chain to search. One of: "eth-sepolia",
+                   "eth-mainnet", "base-sepolia", "base-mainnet". Defaults
+                   to the gateway's configured chain (CHAIN env var) or
+                   eth-sepolia.
 
         Returns:
             A dict with a "robots" list, each entry containing:
@@ -172,12 +174,20 @@ def register_discovery_tools(
             - robot_type: Locomotion/form-factor classification
             - fleet_provider: Organization operating the robot
             - fleet_domain: Regional fleet grouping
+            - mcp_endpoint: Public MCP URL (from IPFS metadata), or null
             - mcp_tools: List of MCP tool names the robot exposes
-            - fleet_endpoint: Public URL of the fleet MCP server (from IPFS
-                              metadata), or null if not stored
+            - fleet_endpoint: Public fleet MCP URL (from IPFS metadata),
+                              or null if not stored
             - local_endpoint: MCP endpoint path on this gateway
                               (e.g. "/tumbller/mcp"), or null if not local
+
+            On invalid chain: returns {"error": "...", "valid_chains": [...]}
         """
+        if chain is not None and chain not in CHAIN_NAMES:
+            return {
+                "error": f"Unknown chain '{chain}'.",
+                "valid_chains": CHAIN_NAMES,
+            }
         robots = discover_robots(robot_type=robot_type, fleet_provider=fleet_provider, chain=chain)
 
         for robot in robots:

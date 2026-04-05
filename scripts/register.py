@@ -6,7 +6,8 @@ Usage:
     uv run python scripts/register.py fakerover
     uv run python scripts/register.py tumbller --chain base-mainnet
 
-Requires in .env: RPC_URL, SIGNER_PVT_KEY, PINATA_JWT, NGROK_DOMAIN
+Requires in .env: SIGNER_PVT_KEY, PINATA_JWT, NGROK_DOMAIN
+Optional in .env: RPC_URL (overrides the selected chain's default public RPC)
 """
 
 import argparse

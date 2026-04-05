@@ -12,7 +12,8 @@ Usage:
     uv run python scripts/fix_metadata.py tello 990
     uv run python scripts/fix_metadata.py tumbller 42 --chain base-mainnet
 
-Requires in .env: RPC_URL, SIGNER_PVT_KEY
+Requires in .env: SIGNER_PVT_KEY
+Optional in .env: RPC_URL (overrides the selected chain's default public RPC)
 """
 
 import argparse

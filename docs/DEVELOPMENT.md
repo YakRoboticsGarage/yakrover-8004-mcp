@@ -139,8 +139,6 @@ Final polish and migration away from single-robot repos.
 
 ---
 
----
-
 ## Phase 2: Bidding Marketplace
 
 Implementation of the robot-side bidding marketplace. See [BIDDING_MARKETPLACE_PLAN.md](BIDDING_MARKETPLACE_PLAN.md) for full design.

@@ -6,7 +6,7 @@ from agent0_sdk import SDK
 from agent0_sdk.core.models import EndpointType
 from dotenv import load_dotenv
 
-from core.chains import CHAIN_NAMES, DEFAULT_CHAIN, get_chain
+from core.chains import get_chain
 from core.plugin import RobotPlugin
 
 load_dotenv()
@@ -19,7 +19,8 @@ def _make_sdk(*, ipfs: bool = False, chain: str | None = None) -> SDK:
         ipfs: Whether to configure IPFS/Pinata for metadata uploads.
         chain: Chain name (e.g. ``"base-mainnet"``). Defaults to the
                ``CHAIN`` env var or ``eth-sepolia``. ``RPC_URL`` in ``.env``
-               always overrides the chain's default RPC.
+               overrides the chain's default RPC; if unset, the chain's
+               bundled public RPC is used automatically.
     """
     chain_cfg = get_chain(chain)
     rpc_url = os.getenv("RPC_URL") or chain_cfg["rpc"]
@@ -49,8 +50,9 @@ def _fleet_url() -> str:
 def register_robot(plugin: RobotPlugin, chain: str | None = None) -> None:
     """Register a robot plugin on ERC-8004.
 
-    Reads RPC_URL, SIGNER_PVT_KEY, PINATA_JWT, and NGROK_DOMAIN from the
-    environment. Uploads metadata to IPFS via Pinata, then submits the
+    Reads SIGNER_PVT_KEY, PINATA_JWT, and NGROK_DOMAIN from the environment.
+    RPC_URL is optional — if unset, the selected chain's default public RPC
+    is used. Uploads metadata to IPFS via Pinata, then submits the
     registration transaction and waits for it to be mined.
 
     Args:
@@ -115,6 +117,8 @@ def update_robot(plugin: RobotPlugin, agent_id: str, chain: str | None = None) -
 
     Loads the agent by ID, updates its MCP endpoint, tool list, and metadata
     from the plugin, re-uploads to IPFS, and submits the update transaction.
+    RPC_URL is optional — if unset, the selected chain's default public RPC
+    is used.
 
     Args:
         plugin: The robot plugin with current metadata and tool list.
@@ -167,8 +171,9 @@ def fix_metadata(plugin: RobotPlugin, agent_id_int: int, chain: str | None = Non
     """Fix on-chain metadata for an existing agent.
 
     Directly sets metadata keys on-chain (without IPFS re-upload).
-    Useful for correcting metadata after registration or migrating
-    from old key names (e.g. agent_type → category).
+    Useful for correcting metadata after registration or migrating from old
+    key names (e.g. agent_type → category). RPC_URL is optional — if unset,
+    the selected chain's default public RPC is used.
 
     Args:
         plugin: The robot plugin with the correct metadata values.

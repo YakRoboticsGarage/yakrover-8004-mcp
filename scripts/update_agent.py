@@ -8,7 +8,8 @@ Usage:
     uv run python scripts/update_agent.py tello 11155111:990
     uv run python scripts/update_agent.py tumbller 8453:42 --chain base-mainnet
 
-Requires in .env: RPC_URL, SIGNER_PVT_KEY, PINATA_JWT, NGROK_DOMAIN
+Requires in .env: SIGNER_PVT_KEY, PINATA_JWT, NGROK_DOMAIN
+Optional in .env: RPC_URL (overrides the selected chain's default public RPC)
 """
 
 import argparse
