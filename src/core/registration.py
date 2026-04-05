@@ -6,20 +6,26 @@ from agent0_sdk import SDK
 from agent0_sdk.core.models import EndpointType
 from dotenv import load_dotenv
 
+from core.chains import CHAIN_NAMES, DEFAULT_CHAIN, get_chain
 from core.plugin import RobotPlugin
 
 load_dotenv()
 
 
-def _make_sdk(*, ipfs: bool = False) -> SDK:
+def _make_sdk(*, ipfs: bool = False, chain: str | None = None) -> SDK:
     """Create an Agent0 SDK instance.
 
     Args:
         ipfs: Whether to configure IPFS/Pinata for metadata uploads.
+        chain: Chain name (e.g. ``"base-mainnet"``). Defaults to the
+               ``CHAIN`` env var or ``eth-sepolia``. ``RPC_URL`` in ``.env``
+               always overrides the chain's default RPC.
     """
+    chain_cfg = get_chain(chain)
+    rpc_url = os.getenv("RPC_URL") or chain_cfg["rpc"]
     kwargs = dict(
-        chainId=11155111,  # Ethereum Sepolia
-        rpcUrl=os.environ["RPC_URL"],
+        chainId=chain_cfg["chain_id"],
+        rpcUrl=rpc_url,
         signer=os.environ["SIGNER_PVT_KEY"],
     )
     if ipfs:
@@ -40,15 +46,20 @@ def _fleet_url() -> str:
     return f"https://{ngrok_domain}/fleet/mcp"
 
 
-def register_robot(plugin: RobotPlugin) -> None:
-    """Register a robot plugin on ERC-8004 (Ethereum Sepolia).
+def register_robot(plugin: RobotPlugin, chain: str | None = None) -> None:
+    """Register a robot plugin on ERC-8004.
 
     Reads RPC_URL, SIGNER_PVT_KEY, PINATA_JWT, and NGROK_DOMAIN from the
     environment. Uploads metadata to IPFS via Pinata, then submits the
     registration transaction and waits for it to be mined.
+
+    Args:
+        plugin: Robot plugin to register.
+        chain: Chain name (e.g. ``"base-mainnet"``). Defaults to the
+               ``CHAIN`` env var or ``eth-sepolia``.
     """
     meta = plugin.metadata()
-    sdk = _make_sdk(ipfs=True)
+    sdk = _make_sdk(ipfs=True, chain=chain)
     mcp_endpoint = _mcp_url(meta.url_prefix)
 
     agent = sdk.createAgent(
@@ -78,7 +89,8 @@ def register_robot(plugin: RobotPlugin) -> None:
     })
 
     fleet_endpoint = _fleet_url()
-    print(f"Registering '{meta.name}' on Ethereum Sepolia...")
+    chain_cfg = get_chain(chain)
+    print(f"Registering '{meta.name}' on {chain_cfg['name']} (chain {chain_cfg['chain_id']})...")
     print(f"  MCP endpoint:   {mcp_endpoint}")
     print(f"  Fleet endpoint: {fleet_endpoint}")
     print(f"  Tools: {plugin.tool_names()}")
@@ -93,12 +105,12 @@ def register_robot(plugin: RobotPlugin) -> None:
     mined = tx_handle.wait_mined(timeout=120)
     reg_file = mined.result
 
-    print(f"\nAgent registered on Ethereum Sepolia!")
+    print(f"\nAgent registered on {chain_cfg['name']}!")
     print(f"Agent ID:  {reg_file.agentId}")
     print(f"Agent URI: {reg_file.agentURI}")
 
 
-def update_robot(plugin: RobotPlugin, agent_id: str) -> None:
+def update_robot(plugin: RobotPlugin, agent_id: str, chain: str | None = None) -> None:
     """Update an existing on-chain robot agent.
 
     Loads the agent by ID, updates its MCP endpoint, tool list, and metadata
@@ -107,9 +119,11 @@ def update_robot(plugin: RobotPlugin, agent_id: str) -> None:
     Args:
         plugin: The robot plugin with current metadata and tool list.
         agent_id: On-chain agent ID (e.g. "11155111:989").
+        chain: Chain name (e.g. ``"base-mainnet"``). Defaults to the
+               ``CHAIN`` env var or ``eth-sepolia``.
     """
     meta = plugin.metadata()
-    sdk = _make_sdk(ipfs=True)
+    sdk = _make_sdk(ipfs=True, chain=chain)
     mcp_endpoint = _mcp_url(meta.url_prefix)
 
     print(f"Loading agent {agent_id}...")
@@ -149,7 +163,7 @@ def update_robot(plugin: RobotPlugin, agent_id: str) -> None:
     print(f"Agent URI: {reg_file.agentURI}")
 
 
-def fix_metadata(plugin: RobotPlugin, agent_id_int: int) -> None:
+def fix_metadata(plugin: RobotPlugin, agent_id_int: int, chain: str | None = None) -> None:
     """Fix on-chain metadata for an existing agent.
 
     Directly sets metadata keys on-chain (without IPFS re-upload).
@@ -159,9 +173,11 @@ def fix_metadata(plugin: RobotPlugin, agent_id_int: int) -> None:
     Args:
         plugin: The robot plugin with the correct metadata values.
         agent_id_int: Numeric agent ID on the identity registry.
+        chain: Chain name (e.g. ``"base-mainnet"``). Defaults to the
+               ``CHAIN`` env var or ``eth-sepolia``.
     """
     meta = plugin.metadata()
-    sdk = _make_sdk()
+    sdk = _make_sdk(chain=chain)
 
     expected = {
         "category": b"robot",

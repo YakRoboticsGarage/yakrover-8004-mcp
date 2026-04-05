@@ -1,13 +1,14 @@
-"""Discover robot agents registered on ERC-8004 (Ethereum Sepolia).
+"""Discover robot agents registered on ERC-8004.
 
 Usage:
     uv run python scripts/discover.py
     uv run python scripts/discover.py --type differential_drive
     uv run python scripts/discover.py --provider yakrover
+    uv run python scripts/discover.py --chain base-mainnet
     uv run python scripts/discover.py --add-mcp
     uv run python scripts/discover.py --add-mcp --scope global
 
-Requires in .env: RPC_URL (defaults to public Sepolia RPC if unset)
+Requires in .env: RPC_URL (defaults to chain's public RPC if unset)
 """
 
 import argparse
@@ -20,6 +21,7 @@ from pathlib import Path
 # Ensure src/ is on the path when run from repo root
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from core.chains import CHAIN_NAMES, DEFAULT_CHAIN, get_chain
 from core.discovery import discover_robots
 
 
@@ -151,6 +153,15 @@ def _add_mcp_servers(robots: list, scope: str, token: str = "") -> None:
 parser = argparse.ArgumentParser(description="Discover robot agents on-chain")
 parser.add_argument("--type", dest="robot_type", help="Filter by robot type (e.g. differential_drive, quadrotor)")
 parser.add_argument("--provider", dest="fleet_provider", help="Filter by fleet provider (e.g. yakrover)")
+parser.add_argument(
+    "--chain",
+    choices=CHAIN_NAMES,
+    default=None,
+    metavar="CHAIN",
+    help=f"EVM chain to query (e.g. base-mainnet). "
+         f"Defaults to CHAIN env var or {DEFAULT_CHAIN}. "
+         f"Choices: {', '.join(CHAIN_NAMES)}",
+)
 parser.add_argument("--add-mcp", action="store_true", help="Add discovered robots as MCP servers in Claude and OpenCode configs")
 parser.add_argument("--scope", choices=["project", "global"], default="project",
                     help="MCP config scope: 'project' (.mcp.json + opencode.jsonc) or 'global' (~/.claude.json + ~/.config/opencode/opencode.json) (default: project)")
@@ -158,9 +169,10 @@ parser.add_argument("--token", default="",
                     help="MCP bearer token to use for auth headers (overrides MCP_BEARER_TOKEN in .env)")
 args = parser.parse_args()
 
-print("Querying ERC-8004 registry on Ethereum Sepolia...\n")
+_chain_cfg = get_chain(args.chain)
+print(f"Querying ERC-8004 registry on {_chain_cfg['name']} (chain {_chain_cfg['chain_id']})...\n")
 
-robots = discover_robots(robot_type=args.robot_type, fleet_provider=args.fleet_provider)
+robots = discover_robots(robot_type=args.robot_type, fleet_provider=args.fleet_provider, chain=args.chain)
 
 if not robots:
     print("No robot agents found.")

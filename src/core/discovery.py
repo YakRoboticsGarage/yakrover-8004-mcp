@@ -13,20 +13,28 @@ from agent0_sdk import SDK
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 
+from core.chains import get_chain
+
 load_dotenv()
 
 IPFS_GATEWAY = "https://ipfs.io/ipfs/"
 
 
-def _get_sdk() -> SDK:
+def _get_sdk(chain: str | None = None) -> SDK:
     """Create a read-only SDK instance for on-chain queries.
 
-    Uses RPC_URL from the environment. No signer needed — discovery is
-    read-only.
+    No signer needed — discovery is read-only.
+
+    Args:
+        chain: Chain name (e.g. ``"base-mainnet"``). Defaults to the
+               ``CHAIN`` env var or ``eth-sepolia``. ``RPC_URL`` in ``.env``
+               always overrides the chain's default RPC.
     """
+    chain_cfg = get_chain(chain)
+    rpc_url = os.getenv("RPC_URL") or chain_cfg["rpc"]
     return SDK(
-        chainId=11155111,
-        rpcUrl=os.getenv("RPC_URL", "https://ethereum-sepolia-rpc.publicnode.com"),
+        chainId=chain_cfg["chain_id"],
+        rpcUrl=rpc_url,
     )
 
 
@@ -59,18 +67,21 @@ def _fetch_ipfs_mcp_meta(sdk: SDK, agent_id_int: int) -> dict:
 def discover_robots(
     robot_type: str | None = None,
     fleet_provider: str | None = None,
+    chain: str | None = None,
 ) -> list[dict]:
     """Query the on-chain registry for robot agents.
 
     Args:
         robot_type: Filter by robot type (e.g. "differential_drive", "quadrotor").
         fleet_provider: Filter by fleet operator (e.g. "yakrover").
+        chain: Chain name (e.g. ``"base-mainnet"``). Defaults to the
+               ``CHAIN`` env var or ``eth-sepolia``.
 
     Returns:
         List of dicts with agent_id, name, robot_type, fleet_provider,
         fleet_domain, and mcp_tools for each matching robot.
     """
-    sdk = _get_sdk()
+    sdk = _get_sdk(chain)
     results = sdk.searchAgents(hasMetadataKey="category")
     robots = []
 
@@ -136,19 +147,23 @@ def register_discovery_tools(
     async def discover_robot_agents(
         robot_type: str | None = None,
         fleet_provider: str | None = None,
+        chain: str | None = None,
     ) -> dict:
         """Discover robot agents registered on the ERC-8004 identity registry.
 
-        Searches the Ethereum Sepolia blockchain for physical robots that have
-        been registered as on-chain agents. Returns their capabilities (MCP
-        tools), classification (robot_type), fleet information, and — if the
-        robot is running on this gateway — the local MCP endpoint URL.
+        Searches an EVM blockchain for physical robots that have been registered
+        as on-chain agents. Returns their capabilities (MCP tools),
+        classification (robot_type), fleet information, and — if the robot is
+        running on this gateway — the local MCP endpoint URL.
 
         Args:
             robot_type: Filter by robot type (e.g. "differential_drive",
                         "quadrotor"). Pass None to return all types.
             fleet_provider: Filter by fleet operator (e.g. "yakrover").
                            Pass None to return all providers.
+            chain: EVM chain to search (e.g. "eth-sepolia", "base-mainnet",
+                   "base-sepolia", "eth-mainnet"). Defaults to the gateway's
+                   configured chain (CHAIN env var) or eth-sepolia.
 
         Returns:
             A dict with a "robots" list, each entry containing:
@@ -163,7 +178,7 @@ def register_discovery_tools(
             - local_endpoint: MCP endpoint path on this gateway
                               (e.g. "/tumbller/mcp"), or null if not local
         """
-        robots = discover_robots(robot_type=robot_type, fleet_provider=fleet_provider)
+        robots = discover_robots(robot_type=robot_type, fleet_provider=fleet_provider, chain=chain)
 
         for robot in robots:
             matched_endpoint = None
