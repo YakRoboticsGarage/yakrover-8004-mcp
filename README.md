@@ -24,33 +24,33 @@ A plugin-based architecture that consolidates shared infrastructure so any robot
                │                                             │
                └─────────────────────┬───────────────────────┘
                                      │
-                             ┌───────▼────────┐
+                             ┌───────▼─────────┐
                              │  ngrok tunnel   │
                              │  single URL     │
                              │  single port    │
                              └───────┬─────────┘
                                      │
-┌────────────────────────────────────▼───────────────────────────────────────┐
+┌────────────────────────────────────▼─────────────────────────────────────────┐
 │                          FastAPI Gateway  :8000                              │
 │                                                                              │
-│ ┌──────────────────────────┐  ┌────────────────────┐  ┌──────────────────┐ │
-│ │       /fleet/mcp         │  │   /tumbller/mcp    │  │   /tello/mcp     │ │
-│ │   Fleet MCP Server       │  │   Tumbller MCP     │  │   Tello MCP      │ │
-│ │                          │  │                    │  │                  │ │
-│ │  discover_robot_agents   │  │  tumbller_move     │  │  tello_takeoff   │ │
-│ │  fleet_request_bids      │  │  tumbller_is       │  │  tello_land      │ │
-│ │  fleet_list_auctions     │  │    _online         │  │  tello_move      │ │
-│ │  fleet_accept_bid        │  │  tumbller_get      │  │  tello_rotate    │ │
-│ │  fleet_execute_task      │  │    _temperature    │  │  tello_flip      │ │
-│ │  fleet_get_auction_status│  │    _humidity       │  │  tello_get_*     │ │
-│ │                          │  │                    │  │                  │ │
-│ │  ┌───────────────────┐   │  │  robot_submit_bid  │  │  robot_submit    │ │
-│ │  │  AuctionEngine    │   │  │  robot_execute     │  │    _bid          │ │
-│ │  │  bid fan-out      │   │  │    _task           │  │  robot_execute   │ │
-│ │  │  accept / execute │   │  │  robot_get_pricing │  │    _task         │ │
-│ │  │  requires_approval│   │  │                    │  │  robot_get       │ │
-│ │  └───────────────────┘   │  └────────┬───────────┘  │    _pricing      │ │
-│ └──────────────────────────┘           │               └────────┬─────────┘ │
+│ ┌──────────────────────────┐  ┌────────────────────┐  ┌──────────────────┐   │
+│ │       /fleet/mcp         │  │   /tumbller/mcp    │  │   /tello/mcp     │   │
+│ │   Fleet MCP Server       │  │   Tumbller MCP     │  │   Tello MCP      │   │
+│ │                          │  │                    │  │                  │   │
+│ │  discover_robot_agents   │  │  tumbller_move     │  │  tello_takeoff   │   │
+│ │  fleet_request_bids      │  │  tumbller_is       │  │  tello_land      │   │
+│ │  fleet_list_auctions     │  │    _online         │  │  tello_move      │   │
+│ │  fleet_accept_bid        │  │  tumbller_get      │  │  tello_rotate    │   │
+│ │  fleet_execute_task      │  │    _temperature    │  │  tello_flip      │   │
+│ │  fleet_get_auction_status│  │    _humidity       │  │  tello_get_*     │   │
+│ │                          │  │                    │  │                  │   │
+│ │  ┌───────────────────┐   │  │  robot_submit_bid  │  │  robot_submit    │   │
+│ │  │  AuctionEngine    │   │  │  robot_execute     │  │    _bid          │   │
+│ │  │  bid fan-out      │   │  │    _task           │  │  robot_execute   │   │
+│ │  │  accept / execute │   │  │  robot_get_pricing │  │    _task         │   │
+│ │  │  requires_approval│   │  │                    │  │  robot_get       │   │
+│ │  └───────────────────┘   │  └────────┬───────────┘  │    _pricing      │   │
+│ └──────────────────────────┘           │              └─────────┬────────┘   │
 │                                        │                        │            │
 │  POST /stripe/webhook                  │                        │            │
 │  → verify sig → on_payment_confirmed() │                        │            │
