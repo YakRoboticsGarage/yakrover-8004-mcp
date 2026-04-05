@@ -13,6 +13,10 @@ def make_stripe_webhook_route(payment_handler, engine):
     engine.on_payment_confirmed() which:
       - marks the auction status as "paid"
       - auto-executes the task if the winning robot has requires_approval=False
+
+    Returns HTTP 400 on invalid Stripe signature (permanent failure — no retry).
+    Returns HTTP 500 on processing errors so Stripe retries until the auction
+    is successfully updated.
     """
 
     async def stripe_webhook(request: Request):
@@ -22,16 +26,27 @@ def make_stripe_webhook_route(payment_handler, engine):
         try:
             auction_id = await payment_handler.handle_webhook(payload, sig_header)
         except ValueError as exc:
+            # Bad signature — permanent failure, do not retry
             raise HTTPException(status_code=400, detail=str(exc))
 
         if auction_id:
             try:
                 await engine.on_payment_confirmed(auction_id)
-            except Exception as exc:
-                logger.error(
-                    "Failed to process confirmed payment for auction %s: %s",
-                    auction_id,
-                    exc,
+            except (KeyError, ValueError) as exc:
+                logger.exception(
+                    "Invalid payment confirmation data for auction %s: %s", auction_id, exc
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to process confirmed payment",
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to process confirmed payment for auction %s", auction_id
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to process confirmed payment",
                 )
 
         return {"received": True}
