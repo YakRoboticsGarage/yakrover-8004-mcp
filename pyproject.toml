@@ -1,6 +1,6 @@
 [project]
 name = "yakrover-8004-mcp"
-version = "0.2.0"
+version = "0.4.0"
 description = "Modular MCP framework for multi-robot fleet control and discovery"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -20,7 +20,8 @@ dependencies = [
 tumbller = ["httpx>=0.28.1"]
 tello = ["djitellopy>=2.5.0"]
 fakerover = ["httpx>=0.28.1"]
-all = ["httpx>=0.28.1", "djitellopy>=2.5.0"]
+marketplace = ["stripe>=7.0.0"]
+all = ["httpx>=0.28.1", "djitellopy>=2.5.0", "stripe>=7.0.0"]
 
 [tool.uv]
 prerelease = "allow"

@@ -10,10 +10,11 @@ logger = logging.getLogger(__name__)
 
 
 class AuctionEngine:
-    def __init__(self, plugins: dict[str, RobotPlugin]):
+    def __init__(self, plugins: dict[str, RobotPlugin], payment_handler=None):
         self.plugins = plugins
         self.auctions: dict[str, AuctionResult] = {}
         self._busy: set[str] = set()  # robot names currently executing a task
+        self._payment_handler = payment_handler  # StripePaymentHandler | None
 
     async def request_bids(self, task: TaskSpec) -> AuctionResult:
         """Fan out bid requests to all plugins in parallel and collect responses.
@@ -66,7 +67,19 @@ class AuctionEngine:
         return auction
 
     async def accept_bid(self, auction_id: str, robot_name: str) -> AuctionResult:
-        """Mark the named robot's bid as the winner. Status moves to 'accepted'."""
+        """Mark the named robot's bid as the winner. Status moves to 'accepted'.
+
+        If a Stripe payment handler is configured, a Checkout session is created
+        immediately and the URL is stored in auction.stripe_checkout_url. The
+        buyer should be redirected there to pay. After payment is confirmed via
+        the /stripe/webhook endpoint, the auction advances to 'paid'.
+
+        If Stripe checkout creation fails, the auction is rolled back to
+        'bidding' and a RuntimeError is raised so the caller can retry.
+
+        Without a payment handler (USDC path or no-payment fleet use), status
+        stays 'accepted' and fleet_execute_task can be called directly.
+        """
         auction = self._get_auction(auction_id)
         if auction.status != "bidding":
             raise ValueError(
@@ -75,27 +88,100 @@ class AuctionEngine:
         winning = next((b for b in auction.bids if b.robot_name == robot_name), None)
         if winning is None:
             raise ValueError(f"No bid from robot {robot_name!r} in auction {auction_id}")
+
         auction.winning_bid = winning
         auction.status = "accepted"
+
+        if self._payment_handler is not None:
+            try:
+                checkout_url = self._payment_handler.create_checkout_session(auction_id, auction)
+                auction.stripe_checkout_url = checkout_url
+                auction.payment_method = "stripe"
+                logger.info("Stripe checkout ready for auction %s", auction_id)
+            except Exception as exc:
+                # Rollback so callers can retry — leave no half-accepted auction
+                auction.winning_bid = None
+                auction.status = "bidding"
+                logger.error(
+                    "Stripe checkout creation failed for auction %s — rolled back to 'bidding': %s",
+                    auction_id,
+                    exc,
+                )
+                raise RuntimeError(f"Stripe checkout creation failed: {exc}") from exc
+
         return auction
+
+    async def on_payment_confirmed(self, auction_id: str) -> None:
+        """Called by the Stripe webhook when checkout.session.completed fires.
+
+        Transitions the auction from 'accepted' → 'paid'. Idempotent: a
+        duplicate webhook on an already-'paid' auction is logged and ignored.
+        Raises ValueError for any other unexpected current status.
+
+        If the winning robot has requires_approval=False (Mode B), task
+        execution is scheduled automatically via asyncio.create_task() with a
+        done_callback that logs any unhandled exception. Otherwise (Mode A),
+        the auction stays 'paid' until the operator calls fleet_execute_task.
+        """
+        auction = self._get_auction(auction_id)
+
+        if auction.status == "paid":
+            logger.info(
+                "Auction %s already marked paid — ignoring duplicate webhook", auction_id
+            )
+            return
+        if auction.status != "accepted":
+            raise ValueError(
+                f"on_payment_confirmed called for auction {auction_id} in unexpected "
+                f"status {auction.status!r}; expected 'accepted'"
+            )
+
+        auction.status = "paid"
+        logger.info("Payment confirmed for auction %s", auction_id)
+
+        requires_approval = True
+        if auction.winning_bid:
+            plugin = self.plugins.get(auction.winning_bid.robot_name)
+            if plugin:
+                terms = plugin.metadata().bidding_terms
+                if terms is not None:
+                    requires_approval = terms.requires_approval
+
+        if not requires_approval:
+            logger.info(
+                "Auction %s: requires_approval=False — scheduling auto-execution", auction_id
+            )
+
+            def _log_exc(task: asyncio.Task) -> None:
+                if not task.cancelled() and task.exception() is not None:
+                    logger.error(
+                        "Auto-execution of auction %s failed: %s",
+                        auction_id,
+                        task.exception(),
+                    )
+
+            task = asyncio.create_task(self.execute(auction_id))
+            task.add_done_callback(_log_exc)
 
     async def execute(self, auction_id: str) -> dict:
         """Execute the accepted task on the winning robot.
 
-        Marks the robot as busy for the duration, updates auction status, and
-        returns the result dict from plugin.execute(). On any error the auction
-        is marked 'failed' and the exception message is captured in
-        execution_result.
+        Accepts auctions in 'accepted' status (USDC / no-payment path) or
+        'paid' status (Stripe payment confirmed). Marks the robot as busy for
+        the duration, updates auction status, and returns the result dict from
+        plugin.execute(). On any error the auction is marked 'failed' and the
+        exception message is captured in execution_result.
         """
         auction = self._get_auction(auction_id)
-        if auction.status != "accepted":
+        if auction.status not in ("accepted", "paid"):
             raise ValueError(
-                f"Auction {auction_id} must be 'accepted' before executing (status: {auction.status!r})"
+                f"Auction {auction_id} must be 'accepted' or 'paid' before executing "
+                f"(status: {auction.status!r})"
             )
 
         if auction.winning_bid is None:
             raise ValueError(
-                f"Auction {auction_id} has status 'accepted' but no winning_bid is set"
+                f"Auction {auction_id} has status {auction.status!r} but no winning_bid is set"
             )
 
         robot_name = auction.winning_bid.robot_name

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0 — 2026-04-05
+
+### Added
+
+Completes **Stage 4** (payment integration) and **Stage 5** (approval flow + delivery format).
+
+- **Stage 4a — `src/auction/payments.py`**: `StripePaymentHandler` wraps `stripe.checkout.Session.create()` and `stripe.Webhook.construct_event()`. `create_checkout_session()` builds a Checkout session with `auction_id` in metadata and correct success/cancel redirect URLs derived from `NGROK_DOMAIN`. `handle_webhook()` verifies the Stripe signature and returns `auction_id` on `checkout.session.completed`.
+- **Stage 4b — `src/auction/webhooks.py`**: `make_stripe_webhook_route(payment_handler, engine)` returns a FastAPI route handler for `POST /stripe/webhook`. On signature validation failure returns HTTP 400; on success calls `engine.on_payment_confirmed()`.
+- **Stage 4c/4d — `src/core/server.py`**: `create_gateway()` now reads `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` from the environment; if both are set and the `stripe` package is installed, a `StripePaymentHandler` is instantiated and passed to `AuctionEngine`. The `/stripe/webhook` route is mounted only when Stripe is active. Gateway index (`GET /`) exposes `"stripe_webhook": "/stripe/webhook"` when enabled.
+- **Stage 4e — `pyproject.toml`**: `stripe>=7.0.0` added as optional `marketplace` extra (`uv sync --extra marketplace`). Also included in `all`.
+- **Stage 4f — `.env.example`**: Documents `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_CONNECT_ACCOUNT_ID` with setup notes.
+- **Stage 5 — Approval flow** (`src/auction/engine.py`):
+  - `AuctionEngine.__init__` accepts `payment_handler` parameter.
+  - `accept_bid()` creates a Stripe Checkout session when a payment handler is configured and stores the URL in `auction.stripe_checkout_url`.
+  - New `on_payment_confirmed(auction_id)` method: marks `status = "paid"`, reads `requires_approval` from the winning plugin's `BiddingTerms`, and schedules auto-execution via `asyncio.create_task()` when `requires_approval=False` (Mode B). Waits for operator approval otherwise (Mode A).
+  - `execute()` now accepts auctions in `"accepted"` status (USDC / no-payment path) **or** `"paid"` status (Stripe payment confirmed). Error message updated.
+- **Stage 5b — Delivery format**: All three plugin `execute()` implementations (FakeRover, Tumbller, Tello) already return the standardized `{success, delivery_data: {readings, summary, robot_id, robot_name, duration_seconds}}` structure. No code changes required.
+- **`fleet_execute_task` docstring** (`src/auction/mcp_tools.py`): Updated to document Mode A / Mode B distinction and the "accepted" or "paid" status requirement.
+
+---
+
 ## 0.3.0 — 2026-04-05
 
 ### Added

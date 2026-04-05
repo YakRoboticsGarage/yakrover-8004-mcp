@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -8,6 +9,8 @@ from fastmcp import FastMCP
 from core.plugin import RobotPlugin
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 def _make_auth():
@@ -91,9 +94,39 @@ def create_gateway(plugins: dict[str, RobotPlugin]) -> FastAPI:
         mcp_apps[name] = mcp.http_app()
         mounted_robots[name] = f"/{name}/mcp"
 
+    # Stripe payment handler (optional — requires marketplace extra + env vars)
+    payment_handler = None
+    stripe_key = os.getenv("STRIPE_SECRET_KEY")
+    stripe_webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+    if stripe_key and stripe_webhook_secret:
+        base_url = os.getenv("NGROK_DOMAIN", "")
+        if base_url and not base_url.startswith("http"):
+            base_url = f"https://{base_url}"
+        if not base_url:
+            logger.warning(
+                "STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET are set but NGROK_DOMAIN is empty. "
+                "Stripe requires absolute success/cancel URLs — set NGROK_DOMAIN to enable "
+                "Stripe payments."
+            )
+        else:
+            try:
+                from auction.payments import StripePaymentHandler
+                connect_account_id = os.getenv("STRIPE_CONNECT_ACCOUNT_ID") or None
+                payment_handler = StripePaymentHandler(
+                    stripe_key,
+                    stripe_webhook_secret,
+                    base_url,
+                    connect_account_id=connect_account_id,
+                )
+            except ImportError:
+                logger.warning(
+                    "STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET are set but the 'stripe' package "
+                    "is not installed. Run 'uv sync --extra marketplace' to enable Stripe payments."
+                )
+
     # Fleet orchestrator (discovery + auction tools)
     from auction.engine import AuctionEngine
-    auction_engine = AuctionEngine(plugins)
+    auction_engine = AuctionEngine(plugins, payment_handler=payment_handler)
     fleet_mcp = create_fleet_server(mounted_robots=mounted_robots, auction_engine=auction_engine)
     mcp_apps["fleet"] = fleet_mcp.http_app()
 
@@ -120,7 +153,16 @@ def create_gateway(plugins: dict[str, RobotPlugin]) -> FastAPI:
                 for name, plugin in plugins.items()
             },
             "fleet_endpoint": "/fleet/mcp",
+            "stripe_webhook": "/stripe/webhook" if payment_handler else None,
         }
+
+    if payment_handler is not None:
+        from auction.webhooks import make_stripe_webhook_route
+        app.add_api_route(
+            "/stripe/webhook",
+            make_stripe_webhook_route(payment_handler, auction_engine),
+            methods=["POST"],
+        )
 
     return app
 

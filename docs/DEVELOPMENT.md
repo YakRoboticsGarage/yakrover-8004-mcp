@@ -145,7 +145,7 @@ Implementation of the robot-side bidding marketplace. See [BIDDING_MARKETPLACE_P
 
 The external marketplace (`yakrover-marketplace`) calls robot MCP tools directly. This repo implements the robot side: bid evaluation, task execution, on-chain bidding terms, and payment receipt.
 
-**Stages 1, 2, and 3 complete.** Next: Stage 5b (standardise `execute()` delivery format across all plugins), then Stage 4 (Stripe payment integration), Stage 5 (approval flow), Stage 5c (feedback tool).
+**Stages 1, 2, 3, 4, and 5 complete.** Next: Stage 5c (feedback tool — blocked on marketplace MCP reachability).
 
 ---
 
@@ -202,18 +202,18 @@ Shared helper that registers marketplace tools on each robot's MCP server. Exter
 
 ### Stage 4: Payment Integration
 
-- [ ] Create `src/auction/payments.py` — `StripePaymentHandler` (checkout session creation, webhook verification)
-- [ ] Create `src/auction/webhooks.py` — FastAPI `/stripe/webhook` route
-- [ ] Wire webhook route into gateway in `server.py`
-- [ ] Add `stripe` to `pyproject.toml` as optional `marketplace` extra
-- [ ] Document `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_ACCOUNT_ID` in `.env.example`
+- [x] Create `src/auction/payments.py` — `StripePaymentHandler` (checkout session creation, webhook verification)
+- [x] Create `src/auction/webhooks.py` — FastAPI `/stripe/webhook` route
+- [x] Wire webhook route into gateway in `server.py`
+- [x] Add `stripe>=7.0.0` to `pyproject.toml` as optional `marketplace` extra
+- [x] Document `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_ACCOUNT_ID` in `.env.example`
 
 ---
 
 ### Stage 5: Approval Flow + Delivery Format
 
-- [ ] **5b** — Standardize `execute()` return across all plugins: `{success, delivery_data: {readings, summary, robot_id, robot_name, duration_seconds}}` / `{success: false, error, partial_data}`
-- [ ] **5** — Implement `requires_approval` flag from `BiddingTerms`; Mode A (human-in-the-loop) and Mode B (autonomous) execution paths in `AuctionEngine`
+- [x] **5b** — Delivery format already standardized across all plugins: `{success, delivery_data: {readings, summary, robot_id, robot_name, duration_seconds}}` / `{success: false, error, partial_data}`
+- [x] **5** — `requires_approval` flag from `BiddingTerms` implemented in `AuctionEngine`: Mode A (human-in-the-loop, `status="paid"` waits for `fleet_execute_task`), Mode B (autonomous, `asyncio.create_task(execute())` fires on `on_payment_confirmed`); `execute()` accepts `"accepted"` or `"paid"` status
 - [ ] **5c** — Wire `auction_submit_feedback` call after successful delivery (optional for v1; blocked on marketplace MCP reachability)
 
 ---
