@@ -1,0 +1,36 @@
+# Fly.io deploy config for the Berlin Tumbller (NPC ROBOT) MCP server.
+# One single-plugin deployment; the other plugins are not loaded.
+#
+# Provisioned via:
+#   fly apps create npc-robot-mcp
+#   fly volumes create audit_data --size 1 --region fra --app npc-robot-mcp
+#   fly secrets set --app npc-robot-mcp \
+#     MCP_BEARER_TOKEN=<random-32-bytes-hex> \
+#     BERLIN_TUMBLLER_URL=https://berlin-tumbller-01.yakrover.online \
+#     BERLIN_TUMBLLER_AUDIT_PATH=/var/lib/berlin-tumbller/audit.jsonl
+#   fly deploy --config deploy/fly/berlin-tumbller/fly.toml --app npc-robot-mcp
+
+app = "npc-robot-mcp"
+primary_region = "fra"
+
+[build]
+  dockerfile = "../../../Dockerfile"
+
+[processes]
+  app = "python scripts/serve.py --robots berlin_tumbller --port 8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[mounts]
+  source = "audit_data"
+  destination = "/var/lib/berlin-tumbller"
