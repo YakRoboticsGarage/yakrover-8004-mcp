@@ -18,10 +18,12 @@ dependencies = [
 
 [project.optional-dependencies]
 tumbller = ["httpx>=0.28.1"]
+berlin_tumbller = ["httpx>=0.28.1"]
 tello = ["djitellopy>=2.5.0"]
 fakerover = ["httpx>=0.28.1"]
 marketplace = ["stripe>=7.0.0"]
 all = ["httpx>=0.28.1", "djitellopy>=2.5.0", "stripe>=7.0.0"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "httpx>=0.28.1"]
 
 [tool.uv]
 prerelease = "allow"

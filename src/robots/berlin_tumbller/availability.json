@@ -1,0 +1,6 @@
+{
+  "movement": {"available": true},
+  "temperature": {"available": false, "reason": "SHT30 not wired"},
+  "humidity": {"available": false, "reason": "SHT30 not wired"},
+  "visual": {"available": false, "reason": "no camera"}
+}
