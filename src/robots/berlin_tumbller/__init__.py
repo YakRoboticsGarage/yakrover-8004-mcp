@@ -12,6 +12,7 @@ See tumbller-esp32s3/docs/MARKETPLACE_REGISTRATION_PLAN.md for the full plan.
 """
 
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from core.marketplace_tools import MARKETPLACE_TOOL_NAMES
@@ -135,8 +136,19 @@ class BerlinTumbllerPlugin(RobotPlugin):
 
             self.client = BerlinTumbllerClient()
 
+        # Probe the robot's /info before we start — captures its pre-task state.
+        # Non-fatal if it fails (we still try to execute); just means we include
+        # less metadata in the delivery.
+        started_at = datetime.now(UTC)
+        robot_info_pre: dict[str, Any] | None = None
+        try:
+            robot_info_pre = await self.client.get("/info")
+        except Exception as exc:
+            robot_info_pre = {"error": f"/info probe failed: {exc}"}
+
         start = time.monotonic()
         command_log: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
         completion = "completed"
         error: str | None = None
 
@@ -144,6 +156,7 @@ class BerlinTumbllerPlugin(RobotPlugin):
             if not self._rate_limiter.allow():
                 completion = "partial"
                 error = "rate limit exceeded"
+                errors.append({"stage": "rate_limit", "command_index": i, "message": error})
                 break
 
             cmd_start = time.monotonic()
@@ -152,6 +165,7 @@ class BerlinTumbllerPlugin(RobotPlugin):
             except Exception as e:
                 completion = "aborted"
                 error = f"motor command '{cmd}' failed: {e}"
+                errors.append({"stage": "motor_call", "command_index": i, "command": cmd, "message": str(e)})
                 break
             cmd_duration_ms = int((time.monotonic() - cmd_start) * 1000)
 
@@ -169,16 +183,37 @@ class BerlinTumbllerPlugin(RobotPlugin):
 
         duration_s = round(time.monotonic() - start, 2)
         executed = len(command_log)
+        finished_at = datetime.now(UTC)
+        total_command_ms = sum(c["duration_ms"] for c in command_log)
 
-        delivery_data = {
+        # Post-run /info probe — records the robot's state after the task.
+        robot_info_post: dict[str, Any] | None = None
+        try:
+            robot_info_post = await self.client.get("/info")
+        except Exception as exc:
+            robot_info_post = {"error": f"/info probe failed: {exc}"}
+
+        delivery_data: dict[str, Any] = {
             "task_id": task_id,
+            "commands_requested": commands,
+            "commands_requested_count": len(commands),
             "commands_executed": command_log,
+            "commands_executed_count": executed,
             "duration_s": duration_s,
+            "total_command_ms": total_command_ms,
+            "started_at": started_at.isoformat(),
+            "finished_at": finished_at.isoformat(),
             "completion_status": completion,
             "robot_id": self.metadata().name,
+            "robot_info": {
+                "pre_task": robot_info_pre,
+                "post_task": robot_info_post,
+            },
+            "errors": errors,
             "summary": (
                 f"Executed {executed}/{len(commands)} motor commands "
                 f"in {duration_s}s ({completion})."
+                + (f" 1 error recorded." if len(errors) == 1 else f" {len(errors)} errors recorded." if errors else "")
             ),
         }
 
@@ -189,7 +224,9 @@ class BerlinTumbllerPlugin(RobotPlugin):
                 "executed_count": executed,
                 "completion": completion,
                 "duration_s": duration_s,
-                "error": error,
+                "started_at": started_at.isoformat(),
+                "finished_at": finished_at.isoformat(),
+                "errors": errors,
             }
         )
 
